@@ -73,7 +73,9 @@ void Ordered(const vc_ordered_plan& p, vc_const_plane source, vc_plane destinati
 // the addition at 65535 is exact after the quantized-code ceiling is applied.
 template <class S, class D>
 void OrderedInteger(const vc_ordered_plan& p, vc_const_plane source, vc_plane destination, vc_rows rows) {
-  const hn::CappedTag<uint16_t, 32> d;
+  using D16 = hn::CappedTag<uint16_t, 32>;
+  using V16 = hn::VFromD<D16>;
+  const D16 d;
   const hn::Rebind<S, decltype(d)> ds;
   const size_t n = hn::Lanes(d), width = size_t(rows.width);
   const auto cap = hn::Set(d, uint16_t(p.quantized_max));
@@ -83,7 +85,7 @@ void OrderedInteger(const vc_ordered_plan& p, vc_const_plane source, vc_plane de
     auto* dst = Row<D>(destination, y);
     size_t x = 0;
     auto quantize = [&](size_t at) HWY_ATTR {
-      hn::VFromD<decltype(d)> value;
+      V16 value;
       if constexpr (sizeof(S) == 1)
         value = hn::PromoteTo(d, hn::LoadU(ds, src + at));
       else

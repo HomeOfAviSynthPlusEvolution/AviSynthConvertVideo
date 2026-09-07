@@ -83,7 +83,7 @@ void VerticalU16Pair(const uint16_t* source0, const uint16_t* source1, uint16_t*
   const auto w = hn::Set(d, int32_t(weight));
   size_t x = 0;
   for (; x + 4 * lanes <= width; x += 4 * lanes) {
-    std::array<hn::VFromD<decltype(d)>, 4> sums;
+    hn::VFromD<decltype(d)> sums[4];
     for (size_t i = 0; i < 4; ++i) {
       const auto a = hn::PromoteTo(d, hn::LoadU(ds, source0 + x + i * lanes));
       const auto b = hn::PromoteTo(d, hn::LoadU(ds, source1 + x + i * lanes));
@@ -151,7 +151,7 @@ void Vertical(const resample::Coefficients& plan, vc_const_plane source, vc_plan
     // any pixel's tap sum. Reuse each coefficient and source-row address.
     constexpr size_t vectors = std::is_same_v<T, float> ? 4 : 8;
     for (; x + vectors * lanes <= vector_end; x += vectors * lanes) {
-      std::array<hn::VFromD<decltype(d)>, vectors> sums;
+      hn::VFromD<decltype(d)> sums[vectors];
       for (auto& sum : sums) {
         if constexpr (std::is_same_v<T, float>)
           sum = hn::Zero(d);
@@ -432,7 +432,7 @@ void HorizontalInteger(const resample::Coefficients& plan, vc_const_plane source
       const hn::Rebind<T, decltype(dh)> dout;
       size_t x = 0;
       for (; x < size_t(plan.horizontal.dot_outputs); x += 4) {
-        std::array<hn::VFromD<decltype(d)>, 4> products;
+        hn::VFromD<decltype(d)> products[4];
         for (size_t i = 0; i < 4; ++i) {
           const auto values = LoadSigned16(d16, src + plan.offsets[x + i], bias);
           const auto weights = hn::LoadU(d16, plan.horizontal.dot_weights.data() + (x + i) * 16);

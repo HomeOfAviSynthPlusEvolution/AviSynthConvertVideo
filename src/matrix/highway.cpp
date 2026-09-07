@@ -49,7 +49,7 @@ void MatrixInteger(const matrix::Config& config, const matrix::Coefficients& m,
       dst[c] = Row<T>(destination[c], y);
     size_t x = 0;
     for (; x + lanes <= width; x += lanes) {
-      std::array<hn::VFromD<decltype(d)>, 3> values;
+      hn::VFromD<decltype(d)> values[3];
       for (int k = 0; k < 3; ++k) {
         const auto loaded = hn::PromoteTo(d32, hn::LoadU(ds, src[k] + x));
         if constexpr (sizeof(A) == 8)
@@ -120,8 +120,8 @@ void MatrixPairs(const matrix::Config& config, const matrix::Coefficients& m,
   const auto offset = hn::Set(d16, int16_t(t.input_offsets[0]));
   const auto limit = hn::Set(d32, t.limit);
   const int precision = config.precision;
-  std::array<hn::VFromD<decltype(d16)>, 3> wbg, wrz;
-  std::array<hn::VFromD<decltype(d32)>, 3> biases, offsets;
+  hn::VFromD<decltype(d16)> wbg[3], wrz[3];
+  hn::VFromD<decltype(d32)> biases[3], offsets[3];
   for (int c = 0; c < outputs; ++c) {
     wbg[c] =
         hn::InterleaveWholeLower(d16, hn::Set(d16, int16_t(t.weights[c][0])), hn::Set(d16, int16_t(t.weights[c][1])));
@@ -140,7 +140,7 @@ void MatrixPairs(const matrix::Config& config, const matrix::Coefficients& m,
       const hn::Repartition<uint8_t, decltype(d16)> db;
       const auto zero = hn::Zero(db);
       for (; x + 2 * lanes <= width; x += 2 * lanes) {
-        std::array<hn::VFromD<decltype(d16)>, 3> a, b;
+        hn::VFromD<decltype(d16)> a[3], b[3];
         for (int k = 0; k < 3; ++k) {
           const auto bytes = hn::LoadU(db, src[k] + x);
           // Preserve 128-bit block order through both widening stages so the
@@ -178,7 +178,7 @@ void MatrixPairs(const matrix::Config& config, const matrix::Coefficients& m,
     }
 #endif
     for (; x + lanes <= width; x += lanes) {
-      std::array<hn::VFromD<decltype(d16)>, 3> values;
+      hn::VFromD<decltype(d16)> values[3];
       for (int k = 0; k < 3; ++k) {
         if constexpr (sizeof(T) == 1)
           values[k] = hn::Add(hn::PromoteTo(d16, hn::LoadU(ds, src[k] + x)), offset);

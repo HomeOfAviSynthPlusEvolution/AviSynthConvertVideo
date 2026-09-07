@@ -7,6 +7,7 @@
 #include <cmath>
 #include <future>
 #include <limits>
+#include <memory>
 #include <new>
 #include <vector>
 namespace vc_test {
@@ -258,7 +259,9 @@ void CheckLargeVerticalStore(int bits, bool pair = false,
   auto destroy = [](T* data) {
     ::operator delete[](data, std::align_val_t(64));
   };
-  std::unique_ptr<T[], decltype(destroy)> actual(new (std::align_val_t(64)) T[size_t(pitch) * height], destroy);
+  std::unique_ptr<T[], decltype(destroy)> actual(
+      static_cast<T*>(::operator new[](sizeof(T) * size_t(pitch) * height, std::align_val_t(64))), destroy);
+  std::uninitialized_default_construct_n(actual.get(), size_t(pitch) * height);
   std::fill_n(actual.get(), size_t(pitch) * height, T(37));
   for (size_t i = 0; i < source.size(); ++i)
     source[i] = T(i % 127);
@@ -332,7 +335,9 @@ TEST(ResampleHighwayContract, LargeHorizontalFloatStreamAndPartialNegativeStride
   auto destroy = [](float* data) {
     ::operator delete[](data, std::align_val_t(64));
   };
-  std::unique_ptr<float[], decltype(destroy)> actual(new (std::align_val_t(64)) float[size_t(pitch) * height], destroy);
+  std::unique_ptr<float[], decltype(destroy)> actual(
+      static_cast<float*>(::operator new[](sizeof(float) * size_t(pitch) * height, std::align_val_t(64))), destroy);
+  std::uninitialized_default_construct_n(actual.get(), size_t(pitch) * height);
   std::fill_n(actual.get(), expected.size(), 37.0f);
   const vc_const_plane src{source.data() + size_t(source_width) * (height - 1), -source_width * 4};
   const vc_plane ref{expected.data() + size_t(pitch) * (height - 1), -pitch * 4};

@@ -83,19 +83,31 @@ void VerticalU16Pair(const uint16_t* source0, const uint16_t* source1, uint16_t*
   const auto w = hn::Set(d, int32_t(weight));
   size_t x = 0;
   for (; x + 4 * lanes <= width; x += 4 * lanes) {
-    hn::VFromD<decltype(d)> sums[4];
+    hn::VFromD<decltype(d)> sums_0, sums_1, sums_2, sums_3;
+    auto sums = [&](size_t i) -> hn::VFromD<decltype(d)>& {
+      switch (i) {
+        case 0:
+          return sums_0;
+        case 1:
+          return sums_1;
+        case 2:
+          return sums_2;
+        default:
+          return sums_3;
+      }
+    };
     for (size_t i = 0; i < 4; ++i) {
       const auto a = hn::PromoteTo(d, hn::LoadU(ds, source0 + x + i * lanes));
       const auto b = hn::PromoteTo(d, hn::LoadU(ds, source1 + x + i * lanes));
       // |b-a| <= 65535 and |weight| <= 32768. The normalized pair's actual
       // weight range is [-24575,32767], so the product plus 4096 fits i32.
       const auto delta = hn::ShiftRight<13>(hn::Add(hn::Mul(hn::Sub(b, a), w), hn::Set(d, 4096)));
-      sums[i] = hn::Add(a, delta);
+      sums(i) = hn::Add(a, delta);
       if (limit < 65535)
-        sums[i] = hn::Min(sums[i], hn::Set(d, limit));
+        sums(i) = hn::Min(sums(i), hn::Set(d, limit));
     }
     for (size_t i = 0; i < 4; i += 2)
-      StoreOutput(dout, hn::OrderedDemote2To(dout, sums[i], sums[i + 1]), destination + x + i * lanes, stream);
+      StoreOutput(dout, hn::OrderedDemote2To(dout, sums(i), sums(i + 1)), destination + x + i * lanes, stream);
   }
   for (; x < width; ++x) {
     const int64_t sum = int64_t(8192 - weight) * source0[x] + int64_t(weight) * source1[x] + 4096;
@@ -151,8 +163,29 @@ void Vertical(const resample::Coefficients& plan, vc_const_plane source, vc_plan
     // any pixel's tap sum. Reuse each coefficient and source-row address.
     constexpr size_t vectors = std::is_same_v<T, float> ? 4 : 8;
     for (; x + vectors * lanes <= vector_end; x += vectors * lanes) {
-      hn::VFromD<decltype(d)> sums[vectors];
-      for (auto& sum : sums) {
+      hn::VFromD<decltype(d)> sums_0, sums_1, sums_2, sums_3, sums_4, sums_5, sums_6, sums_7;
+      auto sums = [&](size_t i) -> hn::VFromD<decltype(d)>& {
+        switch (i) {
+          case 0:
+            return sums_0;
+          case 1:
+            return sums_1;
+          case 2:
+            return sums_2;
+          case 3:
+            return sums_3;
+          case 4:
+            return sums_4;
+          case 5:
+            return sums_5;
+          case 6:
+            return sums_6;
+          default:
+            return sums_7;
+        }
+      };
+      for (size_t i = 0; i < vectors; ++i) {
+        auto& sum = sums(i);
         if constexpr (std::is_same_v<T, float>)
           sum = hn::Zero(d);
         else
@@ -168,9 +201,9 @@ void Vertical(const resample::Coefficients& plan, vc_const_plane source, vc_plan
           const auto weights = hn::InterleaveWholeLower(df16, w0, w1);
           for (size_t i = 0; i < vectors; i += 2) {
             const auto v0 = LoadSigned16(df16, src0 + i * lanes, bias), v1 = LoadSigned16(df16, src1 + i * lanes, bias);
-            sums[i] = hn::Add(sums[i], hn::WidenMulPairwiseAdd(d, hn::InterleaveWholeLower(df16, v0, v1), weights));
-            sums[i + 1] =
-                hn::Add(sums[i + 1], hn::WidenMulPairwiseAdd(d, hn::InterleaveWholeUpper(df16, v0, v1), weights));
+            sums(i) = hn::Add(sums(i), hn::WidenMulPairwiseAdd(d, hn::InterleaveWholeLower(df16, v0, v1), weights));
+            sums(i + 1) =
+                hn::Add(sums(i + 1), hn::WidenMulPairwiseAdd(d, hn::InterleaveWholeUpper(df16, v0, v1), weights));
           }
         }
       }
@@ -179,20 +212,21 @@ void Vertical(const resample::Coefficients& plan, vc_const_plane source, vc_plan
         if constexpr (std::is_same_v<T, float>) {
           const auto weight = hn::Set(d, plan.floats[base + k]);
           for (size_t i = 0; i < vectors; ++i)
-            sums[i] = hn::Add(sums[i], hn::Mul(hn::LoadU(ds, src + i * lanes), weight));
+            sums(i) = hn::Add(sums(i), hn::Mul(hn::LoadU(ds, src + i * lanes), weight));
         } else {
           const auto weight = hn::Set(d, int32_t(plan.integers[base + k]));
           for (size_t i = 0; i < vectors; ++i) {
             const auto values = hn::Sub(hn::PromoteTo(d, hn::LoadU(ds, src + i * lanes)), hn::Set(d, bias));
-            sums[i] = hn::Add(sums[i], hn::Mul(values, weight));
+            sums(i) = hn::Add(sums(i), hn::Mul(values, weight));
           }
         }
       }
       if constexpr (std::is_same_v<T, float>) {
         for (size_t i = 0; i < vectors; ++i)
-          StoreOutput(ds, sums[i], dst + x + i * lanes, stream);
+          StoreOutput(ds, sums(i), dst + x + i * lanes, stream);
       } else {
-        for (auto& sum : sums) {
+        for (size_t i = 0; i < vectors; ++i) {
+          auto& sum = sums(i);
           sum = hn::ShiftRight<shift>(hn::Add(sum, hn::Set(d, bias << shift)));
           sum = LimitEffectiveBits<T>(d, sum, plan.bits_per_sample);
         }
@@ -200,13 +234,13 @@ void Vertical(const resample::Coefficients& plan, vc_const_plane source, vc_plan
           if constexpr (sizeof(T) == 1) {
             const hn::Repartition<int16_t, decltype(d)> d16;
             const hn::Repartition<uint8_t, decltype(d)> d8;
-            const auto lo = hn::OrderedDemote2To(d16, sums[i], sums[i + 1]);
-            const auto hi = hn::OrderedDemote2To(d16, sums[i + 2], sums[i + 3]);
+            const auto lo = hn::OrderedDemote2To(d16, sums(i), sums(i + 1));
+            const auto hi = hn::OrderedDemote2To(d16, sums(i + 2), sums(i + 3));
             StoreOutput(d8, hn::OrderedDemote2To(d8, lo, hi), dst + x + i * lanes, stream);
           } else {
             const hn::Repartition<uint16_t, decltype(d)> d16;
-            StoreOutput(d16, hn::OrderedDemote2To(d16, sums[i], sums[i + 1]), dst + x + i * lanes, stream);
-            StoreOutput(d16, hn::OrderedDemote2To(d16, sums[i + 2], sums[i + 3]), dst + x + (i + 2) * lanes, stream);
+            StoreOutput(d16, hn::OrderedDemote2To(d16, sums(i), sums(i + 1)), dst + x + i * lanes, stream);
+            StoreOutput(d16, hn::OrderedDemote2To(d16, sums(i + 2), sums(i + 3)), dst + x + (i + 2) * lanes, stream);
           }
         }
       }
@@ -266,7 +300,7 @@ auto GatherNarrow(D d, const T* source, V indices, int last_window) {
   delta = hn::Sub(hn::Set(d, int32_t(4 - sizeof(T))), delta);
 #endif
   const auto words = hn::GatherOffset(du, reinterpret_cast<const uint32_t*>(source), windows);
-  const auto values = words >> hn::BitCast(du, hn::ShiftLeft<3>(delta));
+  const auto values = hn::Shr(words, hn::BitCast(du, hn::ShiftLeft<3>(delta)));
   return hn::BitCast(d, hn::And(values, hn::Set(du, sizeof(T) == 1 ? 255u : 65535u)));
 }
 template <class T, class D>
@@ -432,14 +466,26 @@ void HorizontalInteger(const resample::Coefficients& plan, vc_const_plane source
       const hn::Rebind<T, decltype(dh)> dout;
       size_t x = 0;
       for (; x < size_t(plan.horizontal.dot_outputs); x += 4) {
-        hn::VFromD<decltype(d)> products[4];
+        hn::VFromD<decltype(d)> products_0, products_1, products_2, products_3;
+        auto products = [&](size_t i) -> hn::VFromD<decltype(d)>& {
+          switch (i) {
+            case 0:
+              return products_0;
+            case 1:
+              return products_1;
+            case 2:
+              return products_2;
+            default:
+              return products_3;
+          }
+        };
         for (size_t i = 0; i < 4; ++i) {
           const auto values = LoadSigned16(d16, src + plan.offsets[x + i], bias);
           const auto weights = hn::LoadU(d16, plan.horizontal.dot_weights.data() + (x + i) * 16);
-          products[i] = hn::WidenMulPairwiseAdd(d, values, weights);
+          products(i) = hn::WidenMulPairwiseAdd(d, values, weights);
         }
-        const auto ab = hn::PairwiseAdd128(d, products[0], products[1]);
-        const auto cd = hn::PairwiseAdd128(d, products[2], products[3]);
+        const auto ab = hn::PairwiseAdd128(d, products(0), products(1));
+        const auto cd = hn::PairwiseAdd128(d, products(2), products(3));
         const auto combined = hn::PairwiseAdd128(d, ab, cd);
         auto sum = hn::Add(hn::LowerHalf(dh, combined), hn::UpperHalf(dh, combined));
         sum = hn::ShiftRight<shift>(hn::Add(sum, hn::Set(dh, (bias << shift) + (1 << (shift - 1)))));

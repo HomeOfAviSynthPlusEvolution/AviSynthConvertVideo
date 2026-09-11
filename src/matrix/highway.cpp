@@ -15,6 +15,13 @@ namespace vc {
 namespace HWY_NAMESPACE {
 namespace hn = hwy::HWY_NAMESPACE;
 #if HWY_TARGET != HWY_SCALAR && HWY_TARGET != HWY_EMU128
+// SVE vectors and masks are sizeless: keep channels as individual locals.
+// References preserve the load-all-before-store ordering required for aliasing.
+template <class V>
+HWY_INLINE V& VectorChannel(V& y, V& u, V& v, int channel) {
+  return channel == 0 ? y : channel == 1 ? u : v;
+}
+
 template <class T, int outputs = 3>
 void MatrixIntegerTail(const matrix::Config& config, const matrix::IntegerTransform& t, const T* const (&src)[3],
                        T* const (&dst)[outputs], size_t x, size_t width) {
@@ -49,18 +56,19 @@ void MatrixInteger(const matrix::Config& config, const matrix::Coefficients& m,
       dst[c] = Row<T>(destination[c], y);
     size_t x = 0;
     for (; x + lanes <= width; x += lanes) {
-      hn::VFromD<decltype(d)> values[3];
+      hn::VFromD<decltype(d)> values_0, values_1, values_2;
       for (int k = 0; k < 3; ++k) {
         const auto loaded = hn::PromoteTo(d32, hn::LoadU(ds, src[k] + x));
         if constexpr (sizeof(A) == 8)
-          values[k] = hn::Add(hn::PromoteTo(d, loaded), hn::Set(d, A(t.input_offsets[k])));
+          VectorChannel(values_0, values_1, values_2, k) =
+              hn::Add(hn::PromoteTo(d, loaded), hn::Set(d, A(t.input_offsets[k])));
         else
-          values[k] = hn::Add(loaded, hn::Set(d, A(t.input_offsets[k])));
+          VectorChannel(values_0, values_1, values_2, k) = hn::Add(loaded, hn::Set(d, A(t.input_offsets[k])));
       }
       for (int c = 0; c < outputs; ++c) {
-        auto sum = hn::Mul(values[0], hn::Set(d, A(t.weights[c][0])));
-        sum = hn::Add(sum, hn::Mul(values[1], hn::Set(d, A(t.weights[c][1]))));
-        sum = hn::Add(sum, hn::Mul(values[2], hn::Set(d, A(t.weights[c][2]))));
+        auto sum = hn::Mul(values_0, hn::Set(d, A(t.weights[c][0])));
+        sum = hn::Add(sum, hn::Mul(values_1, hn::Set(d, A(t.weights[c][1]))));
+        sum = hn::Add(sum, hn::Mul(values_2, hn::Set(d, A(t.weights[c][2]))));
         sum = hn::Add(sum, hn::Set(d, A(t.biases[c])));
         const auto shifted = hn::ShiftRightSame(sum, config.precision);
         const auto value = hn::Min(hn::Max(hn::Add(shifted, hn::Set(d, A(t.output_offsets[c]))), zero), ceiling);
@@ -120,14 +128,15 @@ void MatrixPairs(const matrix::Config& config, const matrix::Coefficients& m,
   const auto offset = hn::Set(d16, int16_t(t.input_offsets[0]));
   const auto limit = hn::Set(d32, t.limit);
   const int precision = config.precision;
-  hn::VFromD<decltype(d16)> wbg[3], wrz[3];
-  hn::VFromD<decltype(d32)> biases[3], offsets[3];
+  hn::VFromD<decltype(d16)> wbg_0, wbg_1, wbg_2, wrz_0, wrz_1, wrz_2;
+  hn::VFromD<decltype(d32)> biases_0, biases_1, biases_2, offsets_0, offsets_1, offsets_2;
   for (int c = 0; c < outputs; ++c) {
-    wbg[c] =
+    VectorChannel(wbg_0, wbg_1, wbg_2, c) =
         hn::InterleaveWholeLower(d16, hn::Set(d16, int16_t(t.weights[c][0])), hn::Set(d16, int16_t(t.weights[c][1])));
-    wrz[c] = hn::InterleaveWholeLower(d16, hn::Set(d16, int16_t(t.weights[c][2])), hn::Zero(d16));
-    biases[c] = hn::Set(d32, int32_t(t.biases[c]));
-    offsets[c] = hn::Set(d32, int32_t(t.output_offsets[c]));
+    VectorChannel(wrz_0, wrz_1, wrz_2, c) =
+        hn::InterleaveWholeLower(d16, hn::Set(d16, int16_t(t.weights[c][2])), hn::Zero(d16));
+    VectorChannel(biases_0, biases_1, biases_2, c) = hn::Set(d32, int32_t(t.biases[c]));
+    VectorChannel(offsets_0, offsets_1, offsets_2, c) = hn::Set(d32, int32_t(t.output_offsets[c]));
   }
   for (int y = rows.first_row; y < rows.first_row + rows.row_count; ++y) {
     const T* src[3] = {Row<T>(source[0], y), Row<T>(source[1], y), Row<T>(source[2], y)};
@@ -140,31 +149,33 @@ void MatrixPairs(const matrix::Config& config, const matrix::Coefficients& m,
       const hn::Repartition<uint8_t, decltype(d16)> db;
       const auto zero = hn::Zero(db);
       for (; x + 2 * lanes <= width; x += 2 * lanes) {
-        hn::VFromD<decltype(d16)> a[3], b[3];
+        hn::VFromD<decltype(d16)> a_0, a_1, a_2, b_0, b_1, b_2;
         for (int k = 0; k < 3; ++k) {
           const auto bytes = hn::LoadU(db, src[k] + x);
           // Preserve 128-bit block order through both widening stages so the
           // final two packs restore contiguous bytes without a lane shuffle.
-          a[k] = hn::Add(hn::BitCast(d16, hn::InterleaveLower(db, bytes, zero)), offset);
-          b[k] = hn::Add(hn::BitCast(d16, hn::InterleaveUpper(db, bytes, zero)), offset);
+          VectorChannel(a_0, a_1, a_2, k) = hn::Add(hn::BitCast(d16, hn::InterleaveLower(db, bytes, zero)), offset);
+          VectorChannel(b_0, b_1, b_2, k) = hn::Add(hn::BitCast(d16, hn::InterleaveUpper(db, bytes, zero)), offset);
         }
-        const auto a0 = MatrixPairLower(d16, a[0], a[1]);
-        const auto a1 = MatrixPairUpper(d16, a[0], a[1]);
-        const auto a2 = MatrixPairLower(d16, a[2], hn::Zero(d16));
-        const auto a3 = MatrixPairUpper(d16, a[2], hn::Zero(d16));
-        const auto b0 = MatrixPairLower(d16, b[0], b[1]);
-        const auto b1 = MatrixPairUpper(d16, b[0], b[1]);
-        const auto b2 = MatrixPairLower(d16, b[2], hn::Zero(d16));
-        const auto b3 = MatrixPairUpper(d16, b[2], hn::Zero(d16));
+        const auto a0 = MatrixPairLower(d16, a_0, a_1);
+        const auto a1 = MatrixPairUpper(d16, a_0, a_1);
+        const auto a2 = MatrixPairLower(d16, a_2, hn::Zero(d16));
+        const auto a3 = MatrixPairUpper(d16, a_2, hn::Zero(d16));
+        const auto b0 = MatrixPairLower(d16, b_0, b_1);
+        const auto b1 = MatrixPairUpper(d16, b_0, b_1);
+        const auto b2 = MatrixPairLower(d16, b_2, hn::Zero(d16));
+        const auto b3 = MatrixPairUpper(d16, b_2, hn::Zero(d16));
         for (int c = 0; c < outputs; ++c) {
           const auto calculate = [&](auto p0, auto p1, auto p2, auto p3) HWY_ATTR {
-            auto lo = hn::Add(hn::WidenMulPairwiseAdd(d32, p0, wbg[c]), hn::WidenMulPairwiseAdd(d32, p2, wrz[c]));
-            auto hi = hn::Add(hn::WidenMulPairwiseAdd(d32, p1, wbg[c]), hn::WidenMulPairwiseAdd(d32, p3, wrz[c]));
-            lo = hn::ShiftRightSame(hn::Add(lo, biases[c]), precision);
-            hi = hn::ShiftRightSame(hn::Add(hi, biases[c]), precision);
+            auto lo = hn::Add(hn::WidenMulPairwiseAdd(d32, p0, VectorChannel(wbg_0, wbg_1, wbg_2, c)),
+                              hn::WidenMulPairwiseAdd(d32, p2, VectorChannel(wrz_0, wrz_1, wrz_2, c)));
+            auto hi = hn::Add(hn::WidenMulPairwiseAdd(d32, p1, VectorChannel(wbg_0, wbg_1, wbg_2, c)),
+                              hn::WidenMulPairwiseAdd(d32, p3, VectorChannel(wrz_0, wrz_1, wrz_2, c)));
+            lo = hn::ShiftRightSame(hn::Add(lo, VectorChannel(biases_0, biases_1, biases_2, c)), precision);
+            hi = hn::ShiftRightSame(hn::Add(hi, VectorChannel(biases_0, biases_1, biases_2, c)), precision);
             if constexpr (!folded_offsets) {
-              lo = hn::Add(lo, offsets[c]);
-              hi = hn::Add(hi, offsets[c]);
+              lo = hn::Add(lo, VectorChannel(offsets_0, offsets_1, offsets_2, c));
+              hi = hn::Add(hi, VectorChannel(offsets_0, offsets_1, offsets_2, c));
             }
             if constexpr (!full_storage) {
               lo = hn::Min(lo, limit);
@@ -178,25 +189,28 @@ void MatrixPairs(const matrix::Config& config, const matrix::Coefficients& m,
     }
 #endif
     for (; x + lanes <= width; x += lanes) {
-      hn::VFromD<decltype(d16)> values[3];
+      hn::VFromD<decltype(d16)> values_0, values_1, values_2;
       for (int k = 0; k < 3; ++k) {
         if constexpr (sizeof(T) == 1)
-          values[k] = hn::Add(hn::PromoteTo(d16, hn::LoadU(ds, src[k] + x)), offset);
+          VectorChannel(values_0, values_1, values_2, k) =
+              hn::Add(hn::PromoteTo(d16, hn::LoadU(ds, src[k] + x)), offset);
         else
-          values[k] = hn::Add(hn::BitCast(d16, hn::LoadU(ds, src[k] + x)), offset);
+          VectorChannel(values_0, values_1, values_2, k) = hn::Add(hn::BitCast(d16, hn::LoadU(ds, src[k] + x)), offset);
       }
-      const auto bg0 = MatrixPairLower(d16, values[0], values[1]);
-      const auto bg1 = MatrixPairUpper(d16, values[0], values[1]);
-      const auto rz0 = MatrixPairLower(d16, values[2], hn::Zero(d16));
-      const auto rz1 = MatrixPairUpper(d16, values[2], hn::Zero(d16));
+      const auto bg0 = MatrixPairLower(d16, values_0, values_1);
+      const auto bg1 = MatrixPairUpper(d16, values_0, values_1);
+      const auto rz0 = MatrixPairLower(d16, values_2, hn::Zero(d16));
+      const auto rz1 = MatrixPairUpper(d16, values_2, hn::Zero(d16));
       for (int c = 0; c < outputs; ++c) {
-        auto lo = hn::Add(hn::WidenMulPairwiseAdd(d32, bg0, wbg[c]), hn::WidenMulPairwiseAdd(d32, rz0, wrz[c]));
-        auto hi = hn::Add(hn::WidenMulPairwiseAdd(d32, bg1, wbg[c]), hn::WidenMulPairwiseAdd(d32, rz1, wrz[c]));
-        lo = hn::ShiftRightSame(hn::Add(lo, biases[c]), precision);
-        hi = hn::ShiftRightSame(hn::Add(hi, biases[c]), precision);
+        auto lo = hn::Add(hn::WidenMulPairwiseAdd(d32, bg0, VectorChannel(wbg_0, wbg_1, wbg_2, c)),
+                          hn::WidenMulPairwiseAdd(d32, rz0, VectorChannel(wrz_0, wrz_1, wrz_2, c)));
+        auto hi = hn::Add(hn::WidenMulPairwiseAdd(d32, bg1, VectorChannel(wbg_0, wbg_1, wbg_2, c)),
+                          hn::WidenMulPairwiseAdd(d32, rz1, VectorChannel(wrz_0, wrz_1, wrz_2, c)));
+        lo = hn::ShiftRightSame(hn::Add(lo, VectorChannel(biases_0, biases_1, biases_2, c)), precision);
+        hi = hn::ShiftRightSame(hn::Add(hi, VectorChannel(biases_0, biases_1, biases_2, c)), precision);
         if constexpr (!folded_offsets) {
-          lo = hn::Add(lo, offsets[c]);
-          hi = hn::Add(hi, offsets[c]);
+          lo = hn::Add(lo, VectorChannel(offsets_0, offsets_1, offsets_2, c));
+          hi = hn::Add(hi, VectorChannel(offsets_0, offsets_1, offsets_2, c));
         }
         // Saturating demotion supplies the storage bounds, including zero.
         if constexpr (!full_storage) {

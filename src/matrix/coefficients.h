@@ -40,6 +40,7 @@ struct Config {
   int bits_per_sample, precision;
   bool source_full, destination_full;
   Direction direction;
+  bool preserve_float_range = false;
 };
 // Private imported coefficient layout. Channel labels retain their original
 // meaning in each direction; no AVS structures or ABI layout dependency.

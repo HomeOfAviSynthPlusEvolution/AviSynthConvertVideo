@@ -6,13 +6,14 @@
 extern "C" {
 #endif
 
-enum vc_matrix_direction { VC_RGB_TO_YUV = 0, VC_YUV_TO_RGB = 1, VC_RGB_TO_Y = 2 };
+enum vc_matrix_direction { VC_RGB_TO_YUV = 0, VC_YUV_TO_RGB = 1, VC_RGB_TO_Y = 2, VC_YUV_TO_RGB_UNCLIPPED = 3 };
 typedef struct vc_matrix_config {
   double kr, kb;
   // 8 selects U8, 9..16 select native-endian U16, 32 selects F32.
   // Integer inputs must fit the declared depth. F32 RGB/Y use 0..1 and
   // chroma uses -0.5..0.5; finite out-of-range inputs are clipped at RGB/YUV output.
   // RGB_TO_Y preserves the grayscale F32 contract: no output clipping.
+  // YUV_TO_RGB_UNCLIPPED is F32-only and preserves RGB excursions on all targets.
   int bits_per_sample;
   // Fixed-point precision 0..20. Existing planar AVS routes use 15 for
   // RGB->YUV and 13 for YUV->RGB. Ignored by F32 execution but validated.

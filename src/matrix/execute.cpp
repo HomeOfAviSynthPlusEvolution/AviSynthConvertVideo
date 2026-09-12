@@ -70,7 +70,7 @@ void IntegerRows(const Config& config, const Coefficients& m, const std::array<v
   }
 }
 template <bool rgb_to_yuv, int outputs = 3>
-void FloatRows(const Coefficients& m, const std::array<vc_const_plane, 3>& source,
+void FloatRows(const Config& config, const Coefficients& m, const std::array<vc_const_plane, 3>& source,
                const std::array<vc_plane, 3>& destination, vc_rows rows) {
   const float weights[3][3] = {{m.y_b_f, rgb_to_yuv ? m.y_g_f : m.u_b_f, rgb_to_yuv ? m.y_r_f : m.v_b_f},
                                {rgb_to_yuv ? m.u_b_f : m.y_g_f, m.u_g_f, rgb_to_yuv ? m.u_r_f : m.v_g_f},
@@ -94,7 +94,7 @@ void FloatRows(const Coefficients& m, const std::array<vc_const_plane, 3>& sourc
       for (int c = 0; c < outputs; ++c) {
         const float sum = weights[c][0] * values[0] + weights[c][1] * values[1] + weights[c][2] * values[2];
         const float value = rgb_to_yuv ? (c == 0 ? m.offset_y_f : 0.0f) + sum : sum + m.offset_rgb_f;
-        d[c][x] = outputs == 1 ? value
+        d[c][x] = (outputs == 1 || config.preserve_float_range) ? value
                                : std::clamp(value, rgb_to_yuv && c > 0 ? -.5f : 0.0f, rgb_to_yuv && c > 0 ? .5f : 1.0f);
       }
     }
@@ -125,7 +125,7 @@ int Execute(const Config& config, const Coefficients& coefficients, const std::a
   }
   if (config.direction == Direction::RgbToY) {
     if (bytes == 4)
-      FloatRows<true, 1>(coefficients, source, destination, rows);
+      FloatRows<true, 1>(config, coefficients, source, destination, rows);
     else if (bytes == 1)
       IntegerRows<uint8_t, true, 1>(config, coefficients, source, destination, rows);
     else
@@ -135,9 +135,9 @@ int Execute(const Config& config, const Coefficients& coefficients, const std::a
   const bool forward = config.direction != Direction::YuvToRgb;
   if (bytes == 4) {
     if (forward)
-      FloatRows<true>(coefficients, source, destination, rows);
+      FloatRows<true>(config, coefficients, source, destination, rows);
     else
-      FloatRows<false>(coefficients, source, destination, rows);
+      FloatRows<false>(config, coefficients, source, destination, rows);
   } else if (bytes == 1) {
     if (forward)
       IntegerRows<uint8_t, true>(config, coefficients, source, destination, rows);

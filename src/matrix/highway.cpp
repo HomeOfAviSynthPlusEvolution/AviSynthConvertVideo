@@ -227,7 +227,7 @@ void MatrixPairs(const matrix::Config& config, const matrix::Coefficients& m,
   }
 }
 template <bool forward, int outputs = 3>
-void MatrixFloat(const matrix::Config&, const matrix::Coefficients& m, const std::array<vc_const_plane, 3>& source,
+void MatrixFloat(const matrix::Config& config, const matrix::Coefficients& m, const std::array<vc_const_plane, 3>& source,
                  const std::array<vc_plane, 3>& destination, vc_rows rows) {
   const float weights[3][3] = {{m.y_b_f, forward ? m.y_g_f : m.u_b_f, forward ? m.y_r_f : m.v_b_f},
                                {forward ? m.u_b_f : m.y_g_f, m.u_g_f, forward ? m.u_r_f : m.v_g_f},
@@ -261,7 +261,7 @@ void MatrixFloat(const matrix::Config&, const matrix::Coefficients& m, const std
         sum = hn::Add(sum, hn::Set(d, forward ? (c == 0 ? m.offset_y_f : 0.f) : m.offset_rgb_f));
         const auto lo = hn::Set(d, forward && c > 0 ? -.5f : 0.f);
         const auto hi = hn::Set(d, forward && c > 0 ? .5f : 1.f);
-        if constexpr (outputs == 1)
+        if (outputs == 1 || config.preserve_float_range)
           hn::StoreU(sum, d, dst[c] + x);
         else
           hn::StoreU(hn::Min(hn::Max(sum, lo), hi), d, dst[c] + x);
@@ -282,7 +282,7 @@ void MatrixFloat(const matrix::Config&, const matrix::Coefficients& m, const std
         const float sum = weights[c][0] * a + weights[c][1] * b + weights[c][2] * r;
         const float value = sum + (forward ? (c == 0 ? m.offset_y_f : 0.f) : m.offset_rgb_f);
         dst[c][x] =
-            outputs == 1 ? value : std::clamp(value, forward && c > 0 ? -.5f : 0.f, forward && c > 0 ? .5f : 1.f);
+            (outputs == 1 || config.preserve_float_range) ? value : std::clamp(value, forward && c > 0 ? -.5f : 0.f, forward && c > 0 ? .5f : 1.f);
       }
     }
   }

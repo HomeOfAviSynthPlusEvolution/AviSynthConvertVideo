@@ -400,3 +400,24 @@ TEST(MatrixLuma, SharedIntegerArithmeticAndUnclippedFloat) {
   CheckLuma<float>(32);
 }
 } // namespace
+
+TEST(MatrixPublic, UnclippedFloatReversePreservesExcursionsAndRejectsInteger) {
+  for (int64_t target : {int64_t(VC_TARGET_C), int64_t(VC_TARGET_NATIVE)}) {
+    vc_matrix_config config{.2126, .0722, 32, 13, 1, 1, VC_YUV_TO_RGB_UNCLIPPED};
+    vc_matrix_plan* raw = nullptr;
+    ASSERT_EQ(vc_matrix_create_for_target(&config, target, &raw), VC_OK);
+    std::unique_ptr<vc_matrix_plan, decltype(&vc_matrix_destroy)> plan(raw, vc_matrix_destroy);
+    std::array<float, 133> y{}, uv{}, r{}, g{}, b{};
+    for (int i = 0; i < 133; ++i) y[i] = i % 2 ? 1.5f : -.5f;
+    const ptrdiff_t pitch = sizeof(y);
+    ASSERT_EQ(vc_matrix_yuv_to_rgb(plan.get(), {{y.data(), pitch}, {uv.data(), pitch}, {uv.data(), pitch}},
+      {{r.data(), pitch}, {g.data(), pitch}, {b.data(), pitch}, {}}, {133, 1, 0, 1}), VC_OK);
+    for (int i = 0; i < 133; ++i) {
+      EXPECT_FLOAT_EQ(r[i], y[i]); EXPECT_FLOAT_EQ(g[i], y[i]); EXPECT_FLOAT_EQ(b[i], y[i]);
+    }
+    config.bits_per_sample = 16;
+    raw = nullptr;
+    EXPECT_EQ(vc_matrix_create_for_target(&config, target, &raw), VC_INVALID_ARGUMENT);
+    EXPECT_EQ(raw, nullptr);
+  }
+}

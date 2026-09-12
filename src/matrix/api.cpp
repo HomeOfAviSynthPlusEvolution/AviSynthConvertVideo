@@ -22,7 +22,9 @@ int vc_matrix_create_for_target(const vc_matrix_config* config, int64_t target, 
   *output = nullptr;
   if (!config || (config->source_full != 0 && config->source_full != 1) ||
       (config->destination_full != 0 && config->destination_full != 1) ||
-      (config->direction != VC_RGB_TO_YUV && config->direction != VC_YUV_TO_RGB && config->direction != VC_RGB_TO_Y))
+      (config->direction != VC_RGB_TO_YUV && config->direction != VC_YUV_TO_RGB && config->direction != VC_RGB_TO_Y &&
+       config->direction != VC_YUV_TO_RGB_UNCLIPPED) ||
+      (config->direction == VC_YUV_TO_RGB_UNCLIPPED && config->bits_per_sample != 32))
     return VC_INVALID_ARGUMENT;
   try {
     const vc::matrix::Config internal{config->kr,
@@ -32,8 +34,9 @@ int vc_matrix_create_for_target(const vc_matrix_config* config, int64_t target, 
                                       config->source_full != 0,
                                       config->destination_full != 0,
                                       config->direction == VC_RGB_TO_YUV   ? vc::matrix::Direction::RgbToYuv
-                                      : config->direction == VC_YUV_TO_RGB ? vc::matrix::Direction::YuvToRgb
-                                                                           : vc::matrix::Direction::RgbToY};
+                                      : config->direction != VC_RGB_TO_Y ? vc::matrix::Direction::YuvToRgb
+                                                                           : vc::matrix::Direction::RgbToY,
+                                      config->direction == VC_YUV_TO_RGB_UNCLIPPED};
     const auto coefficients = vc::matrix::BuildCoefficients(internal);
     const auto kernel = target == VC_TARGET_C ? nullptr : vc::matrix::GetMatrixKernel(target, internal, coefficients);
     if (target != VC_TARGET_C && target != VC_TARGET_NATIVE && !kernel)

@@ -660,6 +660,24 @@ auto StrideTwoFloatHorizontalSum(D d, const resample::Coefficients& plan, const 
   return sum;
 }
 
+template <class D>
+auto SingleSlidingFloatHorizontalSum(D d, const resample::Coefficients& plan, const resample::HorizontalBlock& block,
+                                     const float* source) {
+  const hn::Rebind<int32_t, D> di;
+  const size_t lanes = hn::Lanes(d);
+  const int32_t* indices = plan.horizontal.indices.data() + block.coefficient_start;
+  const int offset = indices[0];
+  const auto lookup = hn::IndicesFromVec(d, hn::Sub(hn::LoadU(di, indices), hn::Set(di, offset)));
+  const float* src = source + block.source_start + offset;
+  const float* weights = plan.horizontal.float_weights.data() + block.coefficient_start;
+  auto sum = hn::Zero(d);
+  for (int k = 0; k < block.taps; ++k) {
+    const auto samples = hn::TableLookupLanes(hn::LoadU(d, src + k), lookup);
+    sum = hn::Add(sum, hn::Mul(samples, hn::LoadU(d, weights + size_t(k) * lanes)));
+  }
+  return sum;
+}
+
 template <int stride>
 void HorizontalFloat(const resample::Coefficients& plan, vc_const_plane source, vc_plane destination, vc_rows rows,
                      int source_first, int destination_first) {
@@ -687,6 +705,12 @@ void HorizontalFloat(const resample::Coefficients& plan, vc_const_plane source, 
         if constexpr (stride == 2) {
           if (block.stride_two) {
             StoreOutput(d, StrideTwoFloatHorizontalSum(d, plan, block, src), dst + x, stream);
+            continue;
+          }
+        }
+        if constexpr (stride == 1) {
+          if (block.single_sliding) {
+            StoreOutput(d, SingleSlidingFloatHorizontalSum(d, plan, block, src), dst + x, stream);
             continue;
           }
         }
@@ -729,6 +753,8 @@ void RunHorizontalFloat(const resample::Coefficients& plan, vc_const_plane sourc
     HorizontalFloat<4>(plan, source, destination, rows, source_first, destination_first);
   else if (plan.horizontal.has_stride_two_float)
     HorizontalFloat<2>(plan, source, destination, rows, source_first, destination_first);
+  else if (plan.horizontal.has_single_sliding)
+    HorizontalFloat<1>(plan, source, destination, rows, source_first, destination_first);
   else
     HorizontalFloat<0>(plan, source, destination, rows, source_first, destination_first);
 }

@@ -70,8 +70,17 @@ void PrepareHorizontal(Coefficients& plan, size_t lanes) {
         start = 0;
       packed.has_long_stride_two = packed.has_long_stride_two || (!window && stride_two);
     }
+    // Upsampling often needs fewer than one vector of source positions per
+    // tap. Slide that vector instead of repeatedly selecting from four tables.
+    const int first_offset = plan.offsets[first];
+    bool single_sliding = linear && taps >= 8 && (window == int(4 * lanes) || !window) &&
+                          int64_t(first_offset) + int64_t(lanes) + taps - 1 <= plan.source_size;
+    for (size_t i = 0; i < lanes; ++i)
+      single_sliding = single_sliding && plan.offsets[first + i] >= first_offset &&
+                       plan.offsets[first + i] - first_offset < int(lanes);
+    packed.has_single_sliding = packed.has_single_sliding || single_sliding;
     packed.blocks.push_back({start, window, taps, packed.indices.size(), packed.pair_indices.size(), linear, sliding,
-                             stride_two, stride_four});
+                             stride_two, stride_four, single_sliding});
     for (int k = 0; k < taps; ++k)
       for (size_t i = 0; i < lanes; ++i) {
         const size_t position = first + i;

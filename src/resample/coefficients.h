@@ -25,12 +25,14 @@ struct HorizontalBlock {
   bool sliding_window;
   bool stride_two;
   bool stride_four;
+  bool single_sliding;
 };
 struct HorizontalPacking {
   size_t lanes = 0;
   bool has_stride_four = false;
   bool has_long_stride_two = false;
   bool has_stride_two_float = false;
+  bool has_single_sliding = false;
   int single_window_pairs = 0;
   int dot_outputs = 0;
   std::vector<int16_t> dot_weights;

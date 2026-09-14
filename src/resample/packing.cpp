@@ -40,7 +40,15 @@ void PrepareHorizontal(Coefficients& plan, size_t lanes) {
                    start <= plan.source_size - int(2 * lanes) - (taps - 1);
     for (size_t i = 0; i < lanes; ++i)
       sliding = sliding && plan.offsets[first + i] - start < int(2 * lanes);
-    if (!window && !sliding)
+    // Four-sample spacing can deinterleave four taps from the same input
+    // vectors. Prove even the remainder's complete four-vector loads fit;
+    // the extra samples must be in the row, not merely in its padding.
+    bool stride_four = linear && !window && !sliding && taps >= 8 &&
+                       int64_t(start) + int64_t(4 * lanes) + taps - 1 <= plan.source_size;
+    for (size_t i = 0; i < lanes; ++i)
+      stride_four = stride_four && plan.offsets[first + i] - start == int(4 * i);
+    packed.has_stride_four = packed.has_stride_four || stride_four;
+    if (!window && !sliding && !stride_four)
       start = 0;
     bool stride_two = sliding;
     for (size_t i = 0; i < lanes; ++i)
@@ -54,8 +62,8 @@ void PrepareHorizontal(Coefficients& plan, size_t lanes) {
       for (size_t i = 0; i < lanes; ++i)
         stride_two = stride_two && plan.offsets[first + i] - start == int(2 * i);
     }
-    packed.blocks.push_back(
-        {start, window, taps, packed.indices.size(), packed.pair_indices.size(), linear, sliding, stride_two});
+    packed.blocks.push_back({start, window, taps, packed.indices.size(), packed.pair_indices.size(), linear, sliding,
+                             stride_two, stride_four});
     for (int k = 0; k < taps; ++k)
       for (size_t i = 0; i < lanes; ++i) {
         const size_t position = first + i;

@@ -5,6 +5,7 @@
 #include <gtest/gtest.h>
 #include <algorithm>
 #include <cmath>
+#include <cstring>
 #include <future>
 #include <limits>
 #include <memory>
@@ -230,6 +231,45 @@ TEST(ResampleHighwayContract, HorizontalStrideTwoPairsAllTargetsExactBounds) {
     CheckStrideTwoPairs<uint8_t>(8, *table);
     CheckStrideTwoPairs<uint16_t>(10, *table);
     CheckStrideTwoPairs<uint16_t>(16, *table);
+  }
+}
+TEST(ResampleHighwayContract, HorizontalStrideFourFloatAllTargetsExactBoundsAndOrder) {
+  int64_t targets = ResampleSupportedTargets();
+  while (targets) {
+    const int64_t target = targets & -targets;
+    targets &= ~target;
+    SCOPED_TRACE(target);
+    const auto* table = GetResampleKernels(target);
+    ASSERT_NE(table, nullptr);
+    for (int taps : {17, 18, 19, 20, 239, 240, 241}) {
+      const int width = int(3 * table->lanes), height = 3;
+      const int sw = 4 * (width - 1) + taps;
+      Coefficients plan{sw, width, 32, taps, taps, std::vector<int>(width), std::vector<int>(width, taps), {}, {}};
+      for (int x = 0; x < width; ++x) {
+        plan.offsets[x] = 4 * x;
+        for (int k = 0; k < taps; ++k)
+          plan.floats.push_back(float((x * 7 + k * 13) % 31 - 15) / 127);
+      }
+      PrepareHorizontal(plan, table->lanes);
+      ASSERT_TRUE(plan.horizontal.has_stride_four);
+      ASSERT_TRUE(plan.horizontal.blocks.front().stride_four);
+      // The last vector has only the active source samples, so it must not
+      // load the extra three samples required by the sliding remainder.
+      ASSERT_FALSE(plan.horizontal.blocks.back().stride_four);
+      for (const auto& block : plan.horizontal.blocks)
+        if (block.stride_four)
+          ASSERT_LE(int64_t(block.source_start) + int64_t(4 * table->lanes) + taps - 1, sw);
+      std::vector<float> input(size_t(sw) * height), expected(size_t(width) * height, 19), actual(expected);
+      for (size_t i = 0; i < input.size(); ++i)
+        input[i] = std::ldexp(float(int(i % 509) - 254), int(i % 17) - 8);
+      const vc_const_plane src{input.data() + size_t(sw) * (height - 1), -ptrdiff_t(sw * sizeof(float))};
+      const vc_plane ref{expected.data() + size_t(width) * (height - 1), -ptrdiff_t(width * sizeof(float))};
+      const vc_plane dst{actual.data() + size_t(width) * (height - 1), -ptrdiff_t(width * sizeof(float))};
+      const vc_rows rows{width, height, 1, height - 1};
+      ASSERT_EQ(ExecuteC(plan, Axis::Horizontal, src, ref, rows), VC_OK);
+      table->horizontal_float(plan, src, dst, rows, 0, 0);
+      EXPECT_EQ(std::memcmp(actual.data(), expected.data(), actual.size() * sizeof(float)), 0) << "taps=" << taps;
+    }
   }
 }
 TEST(ResampleHighwayContract, HorizontalFloatSlidingWindowsAndNonIntegralRatios) {

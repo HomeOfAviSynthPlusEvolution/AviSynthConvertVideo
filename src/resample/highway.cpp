@@ -563,8 +563,38 @@ void RunHorizontalInteger(const resample::Coefficients& plan, vc_const_plane sou
   else
     HorizontalInteger<uint16_t>(plan, source, destination, rows, source_first, destination_first);
 }
-void RunHorizontalFloat(const resample::Coefficients& plan, vc_const_plane source, vc_plane destination, vc_rows rows,
-                        int source_first, int destination_first) {
+template <class D>
+auto StrideFourHorizontalSum(D d, const resample::Coefficients& plan, const resample::HorizontalBlock& block,
+                             const float* source) {
+  const size_t lanes = hn::Lanes(d);
+  auto sum = hn::Zero(d);
+  int k = 0;
+  for (; block.taps - k >= 4; k += 4) {
+    // The four taps share one contiguous input window. Deinterleave it
+    // once, then preserve each output's original multiply/add order.
+    hn::VFromD<D> a, b, c, e;
+    hn::LoadInterleaved4(d, source + block.source_start + k, a, b, c, e);
+    const float* weights = plan.horizontal.float_weights.data() + block.coefficient_start + size_t(k) * lanes;
+    sum = hn::Add(sum, hn::Mul(a, hn::LoadU(d, weights)));
+    sum = hn::Add(sum, hn::Mul(b, hn::LoadU(d, weights + lanes)));
+    sum = hn::Add(sum, hn::Mul(c, hn::LoadU(d, weights + 2 * lanes)));
+    sum = hn::Add(sum, hn::Mul(e, hn::LoadU(d, weights + 3 * lanes)));
+  }
+  for (; k < block.taps; ++k) {
+    const float* src = source + block.source_start + k;
+    const auto a = hn::LoadU(d, src), b = hn::LoadU(d, src + lanes);
+    const auto c = hn::LoadU(d, src + 2 * lanes), e = hn::LoadU(d, src + 3 * lanes);
+    const auto samples = hn::ConcatEven(d, hn::ConcatEven(d, e, c), hn::ConcatEven(d, b, a));
+    const auto weights =
+        hn::LoadU(d, plan.horizontal.float_weights.data() + block.coefficient_start + size_t(k) * lanes);
+    sum = hn::Add(sum, hn::Mul(samples, weights));
+  }
+  return sum;
+}
+
+template <bool stride_four>
+void HorizontalFloat(const resample::Coefficients& plan, vc_const_plane source, vc_plane destination, vc_rows rows,
+                     int source_first, int destination_first) {
   const hn::ScalableTag<float> d;
   const hn::Rebind<int32_t, decltype(d)> di;
   const size_t lanes = hn::Lanes(d);
@@ -579,7 +609,14 @@ void RunHorizontalFloat(const resample::Coefficients& plan, vc_const_plane sourc
     size_t x = 0;
     for (; x < end; x += lanes) {
       if (plan.horizontal.lanes == lanes) {
-        StoreOutput(d, PackedHorizontalSum(d, plan, plan.horizontal.blocks[x / lanes], src, 0), dst + x, stream);
+        const auto& block = plan.horizontal.blocks[x / lanes];
+        if constexpr (stride_four) {
+          if (block.stride_four) {
+            StoreOutput(d, StrideFourHorizontalSum(d, plan, block, src), dst + x, stream);
+            continue;
+          }
+        }
+        StoreOutput(d, PackedHorizontalSum(d, plan, block, src, 0), dst + x, stream);
         continue;
       }
       const auto offsets = hn::LoadU(di, plan.offsets.data() + x);
@@ -609,6 +646,15 @@ void RunHorizontalFloat(const resample::Coefficients& plan, vc_const_plane sourc
   }
   if (stream)
     hwy::FlushStream();
+}
+void RunHorizontalFloat(const resample::Coefficients& plan, vc_const_plane source, vc_plane destination, vc_rows rows,
+                        int source_first, int destination_first) {
+  // Select once per call, keeping the short-filter loop free of the long
+  // stride-four path's branch and register pressure.
+  if (plan.horizontal.has_stride_four)
+    HorizontalFloat<true>(plan, source, destination, rows, source_first, destination_first);
+  else
+    HorizontalFloat<false>(plan, source, destination, rows, source_first, destination_first);
 }
 size_t ResampleLanes() {
   return hn::Lanes(hn::ScalableTag<int32_t>());

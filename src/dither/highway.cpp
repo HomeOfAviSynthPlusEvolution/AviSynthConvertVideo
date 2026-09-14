@@ -71,7 +71,7 @@ void Ordered(const vc_ordered_plan& p, vc_const_plane source, vc_plane destinati
 }
 // Ordinary ordered reduction never needs signed or floating lanes. Saturating
 // the addition at 65535 is exact after the quantized-code ceiling is applied.
-template <class S, class D>
+template <class S, class D, bool low = false>
 void OrderedInteger(const vc_ordered_plan& p, vc_const_plane source, vc_plane destination, vc_rows rows) {
   using D16 = hn::CappedTag<uint16_t, 32>;
   using V16 = hn::VFromD<D16>;
@@ -79,6 +79,10 @@ void OrderedInteger(const vc_ordered_plan& p, vc_const_plane source, vc_plane de
   const hn::Rebind<S, decltype(d)> ds;
   const size_t n = hn::Lanes(d), width = size_t(rows.width);
   const auto cap = hn::Set(d, uint16_t(p.quantized_max));
+  const hn::Rebind<int16_t, decltype(d)> di;
+  const auto center = hn::Set(d, uint16_t(1 << (p.shift - 1)));
+  const auto scale_integer = hn::Set(di, p.low_scale_integer);
+  const auto scale_fraction = hn::Set(di, p.low_scale_fraction);
   const int backshift = p.config.depth.destination_bits - p.config.quantization_bits;
   for (int y = rows.first_row; y < rows.first_row + rows.row_count; ++y) {
     const auto* src = Row<S>(source, y);
@@ -91,7 +95,17 @@ void OrderedInteger(const vc_ordered_plan& p, vc_const_plane source, vc_plane de
       else
         value = hn::LoadU(d, src + at);
       const auto corr = hn::LoadU(d, p.thresholds16.data() + (y & 15) * 64 + (at & 15));
-      return hn::ShiftLeftSame(hn::Min(hn::ShiftRightSame(hn::SaturatedAdd(value, corr), p.shift), cap), backshift);
+      auto sum = hn::SaturatedAdd(value, corr);
+      if constexpr (low)
+        // After the final zero clamp, subtracting the half-step in unsigned
+        // lanes equals truncating the old signed half-integer correction.
+        sum = hn::SaturatedSub(sum, center);
+      const auto q = hn::Min(hn::ShiftRightSame(sum, p.shift), cap);
+      if constexpr (low) {
+        const auto signed_q = hn::BitCast(di, q);
+        return hn::BitCast(d, hn::Add(hn::Mul(signed_q, scale_integer), hn::MulFixedPoint15(signed_q, scale_fraction)));
+      } else
+        return hn::ShiftLeftSame(q, backshift);
     };
     if constexpr (sizeof(D) == 1) {
       const hn::Repartition<uint8_t, decltype(d)> d8;
@@ -114,7 +128,7 @@ template <class S, class D>
 dither::RowKernel ChooseOrderedFlags(const vc_ordered_config& c) {
   if (c.depth.source_full != c.depth.destination_full)
     return c.quantization_bits < 8 ? Ordered<S, D, true, true> : Ordered<S, D, true, false>;
-  return c.quantization_bits < 8 ? Ordered<S, D, false, true> : OrderedInteger<S, D>;
+  return c.quantization_bits < 8 ? OrderedInteger<S, D, true> : OrderedInteger<S, D>;
 }
 dither::RowKernel ChooseOrdered(const vc_ordered_config& c) {
   if (c.depth.source_bits == 8)

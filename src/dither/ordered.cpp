@@ -100,6 +100,14 @@ int vc_ordered_create_for_target(const vc_ordered_config* config, int64_t target
     for (int y = 0; y < 16; ++y)
       for (int x = 0; x < 64; ++x)
         plan->thresholds16[y * 64 + x] = uint16_t(plan->thresholds[y * 32 + (x & 15)]);
+    if (q < 8) {
+      // Legal low-depth profiles have at most 15 output bits and 127 codes.
+      // Split backscale into an integer and a rounded Q15 fractional part.
+      // The finite code domain matches the original binary32 rounding exactly.
+      plan->low_scale_integer = int16_t(plan->output_max / plan->quantized_max);
+      plan->low_scale_fraction =
+          int16_t(((plan->output_max % plan->quantized_max) * 32768 + plan->quantized_max / 2) / plan->quantized_max);
+    }
     plan->kernel = kernel;
     *output = plan;
     return VC_OK;

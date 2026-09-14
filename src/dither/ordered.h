@@ -12,6 +12,7 @@ struct vc_ordered_plan {
   int period, shift, output_max, quantized_max;
   float backscale;
   std::array<uint16_t, 1024> thresholds16{};
+  int16_t low_scale_integer = 0, low_scale_fraction = 0;
   void (*kernel)(const vc_ordered_plan&, vc_const_plane, vc_plane, vc_rows) = nullptr;
 };
 namespace vc::dither {

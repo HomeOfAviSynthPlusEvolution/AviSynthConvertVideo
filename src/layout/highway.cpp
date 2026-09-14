@@ -269,7 +269,13 @@ int Luma(vc_const_plane source, vc_plane destination, vc_rows rows) {
   const int status = CheckYuy2Luma(source, destination, rows, Neutralize);
   if (status != VC_OK || rows.row_count == 0)
     return status;
+#if HWY_TARGET == HWY_AVX3_ZEN4
+  // Zen4's 4K luma extraction favors 32-byte batches in both the API and
+  // full-filter measurements. Neutralization retains its full-width masks.
+  const hn::CappedTag<uint8_t, Neutralize ? HWY_MAX_BYTES : 32> d;
+#else
   const hn::ScalableTag<uint8_t> d;
+#endif
   const size_t lanes = hn::Lanes(d);
   const size_t end = size_t(rows.width) - size_t(rows.width) % lanes;
   for (int y = rows.first_row; y < rows.first_row + rows.row_count; ++y) {

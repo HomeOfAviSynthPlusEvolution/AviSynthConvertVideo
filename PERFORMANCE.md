@@ -1,6 +1,6 @@
 # Video conversion benchmark results
 
-Current performance comparisons: **522 full-filter cases**, **592 kernel rows**, and **108 supplementary long-support resampling rows** (54 profiles × two targets). The supplementary set overlaps the filter audit. The tables include refreshed AMD measurements for **Floyd including cached U8 range conversion, U16 low-bit row conversion and integer/F32 horizontal resampling, including uniform short integer supports and long regular pair loads, paired F32 loads, single-vector float windows, long integer sliding pairs and fixed short F32 supports, Ordered quantization and range mapping, and U8 integer matrix accumulation, U8 depth range mapping, direct packed RGB repacking, YUY2 chroma neutralization and additional high-precision integer matrix coverage**. Unaffected paths retain their existing measurements. Missing upstream counterparts are explicitly marked, not counted as wins. Coverage is the measured workload set, not every possible parameter combination. Times are milliseconds.
+Current performance comparisons: **522 full-filter cases**, **592 kernel rows**, and **108 supplementary long-support resampling rows** (54 profiles × two targets). The supplementary set overlaps the filter audit. The tables include refreshed AMD measurements for **Floyd including cached U8 range conversion, U16 low-bit row conversion and integer/F32 horizontal resampling, including uniform short integer supports and long regular pair loads, paired F32 loads, single-vector float windows, long integer sliding pairs and fixed short F32 supports, Ordered quantization and range mapping, and U8 integer matrix accumulation, U8 depth range mapping, direct packed RGB repacking, YUY2 chroma neutralization, Zen4 luma extraction and additional high-precision integer matrix coverage**. Unaffected paths retain their existing measurements. Missing upstream counterparts are explicitly marked, not counted as wins. Coverage is the measured workload set, not every possible parameter combination. Times are milliseconds.
 
 ## Reference and method
 
@@ -27,7 +27,7 @@ Current performance comparisons: **522 full-filter cases**, **592 kernel rows**,
 | greyscale | 21 | 0.900 | 0.293–1.297 | 0.902 | 0.257–1.304 |
 | interlaced | 9 | 0.992 | 0.206–1.132 | 0.890 | 0.211–1.044 |
 | layout | 23 | 0.955 | 0.126–1.820 | 1.052 | 0.108–1.578 |
-| luma | 15 | 0.906 | 0.598–1.047 | 0.869 | 0.512–1.041 |
+| luma | 15 | 0.906 | 0.598–1.047 | 0.867 | 0.512–1.009 |
 | matrix-filter | 54 | 0.996 | 0.627–1.825 | 0.882 | 0.562–1.423 |
 | ordered | 16 | 0.970 | 0.306–1.330 | 0.876 | 0.249–1.097 |
 | resize | 144 | 0.961 | 0.274–1.520 | 0.822 | 0.386–1.136 |
@@ -356,7 +356,7 @@ Expand each family. CPU cells are **upstream ms / new ms / ratio**; low-work rat
 
 | Case | Input | Size | Expression | AVX2: old / new / ratio | Native: old / new / ratio | Equal output | Observations AVX2 / native |
 |---|---|---|---|---|---|---|---|
-| luma-030 | YUY2 | 1920×1080 | `src.ConvertToY8()` | 0.0739 / 0.0626 / 0.847 | 0.0743 / 0.0688 / 0.926 | True / True | 1 / 1 |
+| luma-030 | YUY2 | 1920×1080 | `src.ConvertToY8()` | 0.0739 / 0.0626 / 0.847 | 0.0743 / 0.0675 / 0.909 | True / True | 1 / 3 |
 | luma-033 | YV16 | 1920×1080 | `src.ConvertToY8()` | 0.0003 / 0.0003 / low-work | 0.0003 / 0.0003 / low-work | True / True | 1 / 1 |
 | luma-035 | RGB24 | 1920×1080 | `src.ConvertToY()` | 0.4474 / 0.4636 / 1.036 | 0.4386 / 0.4326 / 0.986 | False / False | 3 / 3 |
 | luma-037 | RGB32 | 1920×1080 | `src.ConvertToY()` | 1.0472 / 0.6261 / 0.598 | 0.8328 / 0.4265 / 0.512 | False / False | 1 / 3 |
@@ -368,7 +368,7 @@ Expand each family. CPU cells are **upstream ms / new ms / ratio**; low-work rat
 | luma-049 | YV12 | 1920×1080 | `src.ConvertToY()` | 0.0003 / 0.0003 / low-work | 0.0003 / 0.0003 / low-work | True / True | 1 / 1 |
 | luma-051 | YUV420P16 | 1920×1080 | `src.ConvertToY()` | 0.0003 / 0.0003 / low-work | 0.0003 / 0.0003 / low-work | True / True | 1 / 1 |
 | luma-053 | YUV420PS | 1920×1080 | `src.ConvertToY()` | 0.0003 / 0.0003 / low-work | 0.0003 / 0.0003 / low-work | True / True | 1 / 1 |
-| luma-467 | YUY2 | 3840×2160 | `src.ConvertToY8()` | 0.6492 / 0.5927 / 0.913 | 0.6792 / 0.7070 / 1.041 | True / True | 1 / 1 |
+| luma-467 | YUY2 | 3840×2160 | `src.ConvertToY8()` | 0.6492 / 0.5927 / 0.913 | 0.6792 / 0.5886 / 0.867 | True / True | 1 / 3 |
 | extra-028 | RGBP10 | 1920×1080 | `src.ConvertToY()` | 0.3641 / 0.3394 / 0.932 | 0.3680 / 0.3110 / 0.845 | False / False | 1 / 1 |
 | extra-030 | RGBP12 | 1920×1080 | `src.ConvertToY()` | 0.6561 / 0.4361 / 0.665 | 0.3409 / 0.3309 / 0.971 | False / False | 1 / 1 |
 | extra-032 | RGBP14 | 1920×1080 | `src.ConvertToY()` | 0.4130 / 0.3695 / 0.895 | 0.3591 / 0.3119 / 0.869 | False / False | 1 / 1 |

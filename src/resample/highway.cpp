@@ -316,6 +316,19 @@ auto PairedHorizontalSum(D d, const resample::Coefficients& plan, const resample
                          const T* source, int bias) {
   const hn::Repartition<int16_t, D> d16;
   const size_t lanes16 = hn::Lanes(d16);
+  if (block.stride_two) {
+    // PrepareHorizontal proves these pair loads remain inside the row.
+    // The regular offset pattern needs neither index loads nor lane lookups.
+    constexpr int shift = sizeof(T) == 1 ? 14 : 13;
+    auto sum = hn::Zero(d), odd = hn::Zero(d);
+    for (int k = 0; k < block.taps; k += 2) {
+      const size_t offset = block.pair_start + size_t(k / 2) * lanes16;
+      const auto samples = LoadSigned16(d16, source + block.source_start + k, bias);
+      const auto weights = hn::LoadU(d16, plan.horizontal.pair_weights.data() + offset);
+      sum = hn::ReorderWidenMulAccumulate(d, samples, weights, sum, odd);
+    }
+    return hn::Add(hn::RearrangeToOddPlusEven(sum, odd), hn::Set(d, 1 << (shift - 1)));
+  }
   const auto v0 = LoadSigned16(d16, source + block.source_start, bias);
   auto v1 = hn::Zero(d16);
   if (block.window_size == int(2 * lanes16))

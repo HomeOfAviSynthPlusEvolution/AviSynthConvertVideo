@@ -186,6 +186,52 @@ TEST(ResampleHighwayContract, HorizontalEightLaneDotAndBoundedTail) {
   CheckHorizontalInteger<uint16_t>(10, table);
   CheckHorizontalInteger<uint16_t>(16, table);
 }
+template <class T>
+void CheckStrideTwoPairs(int bits, const ResampleKernels& table) {
+  bool saw_regular = false, saw_edge = false;
+  for (auto kind : {FilterKind::Point, FilterKind::Spline64})
+    for (int sw : {65, 128, 257}) {
+      const int width = sw / 2, height = 5;
+      const auto function = DefaultFunction(kind);
+      auto plan = BuildCoefficients(*function, {sw, width, 0, double(width * 2), bits});
+      PrepareHorizontal(plan, table.lanes);
+      for (const auto& block : plan.horizontal.blocks) {
+        saw_regular = saw_regular || block.stride_two;
+        saw_edge = saw_edge || !block.stride_two;
+        if (block.stride_two)
+          ASSERT_LE(int64_t(block.source_start) + int64_t(2 * table.lanes) + ((int64_t(block.taps) + 1) / 2) * 2 - 2,
+                    sw);
+      }
+      // Also exercise paired loads on eight-lane targets whose dot-product
+      // shortcut would otherwise handle the longer filter first.
+      plan.horizontal.dot_outputs = 0;
+      std::vector<T> input(size_t(sw) * height), expected(size_t(width) * height, T(19)), actual(expected);
+      for (size_t i = 0; i < input.size(); ++i)
+        input[i] = T((i * 9829) & ((1 << bits) - 1));
+      const vc_const_plane src{input.data() + size_t(sw) * (height - 1), -ptrdiff_t(sw * sizeof(T))};
+      const vc_plane ref{expected.data() + size_t(width) * (height - 1), -ptrdiff_t(width * sizeof(T))};
+      const vc_plane dst{actual.data() + size_t(width) * (height - 1), -ptrdiff_t(width * sizeof(T))};
+      const vc_rows rows{width, height, 1, height - 1};
+      ASSERT_EQ(ExecuteC(plan, Axis::Horizontal, src, ref, rows), VC_OK);
+      table.horizontal_integer(plan, src, dst, rows, 0, 0);
+      ASSERT_EQ(actual, expected) << "bits=" << bits << " width=" << sw << " lanes=" << table.lanes;
+    }
+  EXPECT_TRUE(saw_regular);
+  EXPECT_TRUE(saw_edge);
+}
+TEST(ResampleHighwayContract, HorizontalStrideTwoPairsAllTargetsExactBounds) {
+  int64_t targets = ResampleSupportedTargets();
+  while (targets) {
+    const int64_t target = targets & -targets;
+    targets &= ~target;
+    SCOPED_TRACE(target);
+    const auto* table = GetResampleKernels(target);
+    ASSERT_NE(table, nullptr);
+    CheckStrideTwoPairs<uint8_t>(8, *table);
+    CheckStrideTwoPairs<uint16_t>(10, *table);
+    CheckStrideTwoPairs<uint16_t>(16, *table);
+  }
+}
 TEST(ResampleHighwayContract, HorizontalFloatSlidingWindowsAndNonIntegralRatios) {
   const auto* table = EightLaneTable();
   if (!table)

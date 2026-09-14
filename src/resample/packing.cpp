@@ -45,6 +45,15 @@ void PrepareHorizontal(Coefficients& plan, size_t lanes) {
     bool stride_two = sliding;
     for (size_t i = 0; i < lanes; ++i)
       stride_two = stride_two && plan.offsets[first + i] - start == int(2 * i);
+    if (plan.bits_per_sample != 32) {
+      // At a two-sample stride, adjacent taps for all outputs form one
+      // contiguous vector. Include the zero-weight mate of an odd last tap
+      // in the load-bound proof; it must still be inside the source row.
+      stride_two = window && start == plan.offsets[first] &&
+                   int64_t(start) + int64_t(2 * lanes) + ((int64_t(taps) + 1) / 2) * 2 - 2 <= plan.source_size;
+      for (size_t i = 0; i < lanes; ++i)
+        stride_two = stride_two && plan.offsets[first + i] - start == int(2 * i);
+    }
     packed.blocks.push_back(
         {start, window, taps, packed.indices.size(), packed.pair_indices.size(), linear, sliding, stride_two});
     for (int k = 0; k < taps; ++k)

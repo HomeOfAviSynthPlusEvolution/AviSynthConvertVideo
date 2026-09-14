@@ -1,11 +1,11 @@
 # Video conversion benchmark results
 
-Current performance comparisons: **522 full-filter cases**, **584 kernel rows**, and **108 supplementary long-support resampling rows** (54 profiles × two targets). The supplementary set overlaps the filter audit. The tables include refreshed AMD measurements for **Floyd and integer/F32 horizontal resampling, including uniform short integer supports and long regular pair loads, and Ordered quantization and range mapping**. Unaffected paths retain their existing measurements. Missing upstream counterparts are explicitly marked, not counted as wins. Coverage is the measured workload set, not every possible parameter combination. Times are milliseconds.
+Current performance comparisons: **522 full-filter cases**, **584 kernel rows**, and **108 supplementary long-support resampling rows** (54 profiles × two targets). The supplementary set overlaps the filter audit. The tables include refreshed AMD measurements for **Floyd and integer/F32 horizontal resampling, including uniform short integer supports and long regular pair loads, paired F32 loads, and Ordered quantization and range mapping**. Unaffected paths retain their existing measurements. Missing upstream counterparts are explicitly marked, not counted as wins. Coverage is the measured workload set, not every possible parameter combination. Times are milliseconds.
 
 ## Reference and method
 
 - AMD refresh: 2026-09-14, Ryzen 9 7940H, Windows x64, clang-cl 22.1.3 Release, pinned to logical CPU 12 (0x1000). Each refresh uses one optimized module build for its affected paths. No concurrent build or test work during timing.
-- Affected module timings are replaced in place; unchanged paths retain their measurements. The low-depth Ordered refresh covers 2 full-filter cases (4 target measurements) and 8 kernel target rows. Its kernel harness retains the original deterministic input, exact pitches, three warmups and seven samples of ten calls. The Ordered range refresh covers 8 full-filter cases (16 target measurements) and 24 kernel target rows with the same harness. The long regular-pair refresh covers 4 full-filter cases (8 target measurements) and 24 supplementary target rows, with the original filter harness and current data replacing the affected rows. The regular short kernel profiles are unchanged. The uniform short-support refresh covers 64 full-filter cases (117 target measurements) and 60 kernel target rows. The fixed host source is `bda0aab8bd9b366da41e946d41236735bae839af`, matching the original harness integration. Source identities, binary hashes, raw observations and reproduction scripts are recorded in untracked `docs/PERFORMANCE-CURRENT-2026-09-14/` and `docs/PMU-NEXT-2026-09-14/`.
+- Affected module timings are replaced in place; unchanged paths retain their measurements. The low-depth Ordered refresh covers 2 full-filter cases (4 target measurements) and 8 kernel target rows. Its kernel harness retains the original deterministic input, exact pitches, three warmups and seven samples of ten calls. The Ordered range refresh covers 8 full-filter cases (16 target measurements) and 24 kernel target rows with the same harness. The long regular-pair refresh covers 4 full-filter cases (8 target measurements) and 24 supplementary target rows, with the original filter harness and current data replacing the affected rows. The regular short kernel profiles are unchanged. The paired-F32 refresh covers 29 full-filter cases (58 target measurements), 16 kernel target rows and 24 supplementary target rows. The uniform short-support refresh covers 64 full-filter cases (117 target measurements) and 60 kernel target rows. The fixed host source is `bda0aab8bd9b366da41e946d41236735bae839af`, matching the original harness integration. Source identities, binary hashes, raw observations and reproduction scripts are recorded in untracked `docs/PERFORMANCE-CURRENT-2026-09-14/` and `docs/PMU-NEXT-2026-09-14/`.
 - The U16 BGRA unpack alignment optimization applies only to AVX3_SPR. AMD AVX2/AVX3_ZEN4 unpack instructions are unchanged, so their existing rows remain current. Controlled-address AMD checks and the separate SPR PMU evidence are recorded in `docs/PMU-NEXT-2026-09-14/02-packed-alpha/`; server pipeline timings are not substituted into these AMD tables.
 - Upstream reference: `5c82777b374bdef16e13007a11e77d735ac1e4eb`. Its existing measurements are retained unchanged; no upstream code was timed during this refresh. Module and upstream values therefore come from separate sessions on the same AMD machine. Small differences are not established gains or regressions.
 - AVX2 uses SetMaxCPU("avx2") on the module DLL. Native measures the highest available production target, Highway **AVX3_ZEN4**, rather than choosing the fastest measured target. The upstream column uses its saved AVX512 result where implemented. Floyd remains the shared C implementation for both CPU settings.
@@ -19,7 +19,7 @@ Current performance comparisons: **522 full-filter cases**, **584 kernel rows**,
 
 | Family | Nontrivial cases | AVX2 median | AVX2 range | Native median | Native range |
 |---|---|---|---|---|---|
-| chroma | 25 | 0.923 | 0.544–1.304 | 0.822 | 0.630–1.370 |
+| chroma | 25 | 0.908 | 0.544–1.304 | 0.822 | 0.576–1.370 |
 | depth | 132 | 1.141 | 0.908–1.506 | 0.994 | 0.837–1.204 |
 | depth-alpha | 13 | 1.067 | 0.976–3.307 | 1.028 | 0.904–2.917 |
 | floyd | 17 | 1.068 | 0.962–1.262 | 1.035 | 0.944–1.209 |
@@ -27,10 +27,10 @@ Current performance comparisons: **522 full-filter cases**, **584 kernel rows**,
 | interlaced | 9 | 0.992 | 0.206–1.132 | 0.936 | 0.211–1.211 |
 | layout | 23 | 0.955 | 0.126–1.820 | 1.083 | 0.108–1.854 |
 | luma | 15 | 0.906 | 0.598–1.047 | 0.869 | 0.592–1.325 |
-| matrix-filter | 54 | 1.000 | 0.627–1.825 | 0.901 | 0.562–1.423 |
+| matrix-filter | 54 | 0.996 | 0.627–1.825 | 0.901 | 0.562–1.423 |
 | ordered | 16 | 0.970 | 0.306–1.330 | 0.876 | 0.249–1.097 |
-| resize | 144 | 0.997 | 0.274–2.981 | 0.865 | 0.386–1.296 |
-| resize-composed | 19 | 0.992 | 0.559–1.486 | 0.766 | 0.362–0.889 |
+| resize | 144 | 0.961 | 0.274–2.981 | 0.822 | 0.386–1.296 |
+| resize-composed | 19 | 0.923 | 0.559–1.486 | 0.766 | 0.362–0.889 |
 | yuy2 | 11 | 0.847 | 0.202–1.218 | 0.829 | 0.211–1.114 |
 
 ## Complete full-filter comparisons
@@ -64,8 +64,8 @@ Expand each family. CPU cells are **upstream ms / new ms / ratio**; low-work rat
 | chroma-127 | YUV420P16 | 1920×1080 | `src.ConvertToYUV422(chromaresample="spline36")` | 0.7285 / 0.6562 / 0.901 | 0.6793 / 0.5726 / 0.843 | True / True | 3 / 3 |
 | chroma-128 | YUV420P16 | 1920×1080 | `src.ConvertToYUV420(chromaresample="spline36")` | 0.0000 / 0.0001 / low-work | 0.0000 / 0.0001 / low-work | True / True | 3 / 3 |
 | chroma-129 | YUV444PS | 1920×1080 | `src.ConvertToYUV444(chromaresample="spline36")` | 0.0000 / 0.0001 / low-work | 0.0000 / 0.0001 / low-work | True / True | 3 / 3 |
-| chroma-130 | YUV444PS | 1920×1080 | `src.ConvertToYUV422(chromaresample="spline36")` | 3.0745 / 3.3166 / 1.079 | 4.4746 / 3.1418 / 0.702 | False / False | 3 / 3 |
-| chroma-131 | YUV444PS | 1920×1080 | `src.ConvertToYUV420(chromaresample="spline36")` | 3.6483 / 3.9536 / 1.084 | 5.0919 / 3.8084 / 0.748 | False / False | 3 / 3 |
+| chroma-130 | YUV444PS | 1920×1080 | `src.ConvertToYUV422(chromaresample="spline36")` | 3.0745 / 2.7913 / 0.908 | 4.4746 / 2.5773 / 0.576 | False / False | 3 / 3 |
+| chroma-131 | YUV444PS | 1920×1080 | `src.ConvertToYUV420(chromaresample="spline36")` | 3.6483 / 3.4520 / 0.946 | 5.0919 / 3.1714 / 0.623 | False / False | 3 / 3 |
 | chroma-132 | YUV422PS | 1920×1080 | `src.ConvertToYUV444(chromaresample="spline36")` | 3.4198 / 3.3952 / 0.993 | 4.2501 / 2.7956 / 0.658 | False / False | 3 / 3 |
 | chroma-133 | YUV422PS | 1920×1080 | `src.ConvertToYUV422(chromaresample="spline36")` | 0.0000 / 0.0001 / low-work | 0.0000 / 0.0001 / low-work | True / True | 3 / 3 |
 | chroma-134 | YUV422PS | 1920×1080 | `src.ConvertToYUV420(chromaresample="spline36")` | 1.2223 / 1.4399 / 1.178 | 1.2954 / 1.3583 / 1.049 | False / False | 3 / 3 |
@@ -412,8 +412,8 @@ Expand each family. CPU cells are **upstream ms / new ms / ratio**; low-work rat
 | matrix-filter-080 | RGBP16 | 1920×1080 | `src.ConvertToYUV422(matrix="Rec709")` | 3.3444 / 2.6636 / 0.796 | 3.3373 / 1.9879 / 0.596 | False / False | 3 / 3 |
 | matrix-filter-081 | RGBP16 | 1920×1080 | `src.ConvertToYUV420(matrix="Rec709")` | 3.4758 / 2.9587 / 0.851 | 3.9150 / 2.2014 / 0.562 | False / False | 3 / 3 |
 | matrix-filter-082 | RGBPS | 1920×1080 | `src.ConvertToYUV444(matrix="Rec709")` | 1.4842 / 1.6482 / 1.110 | 1.5691 / 1.5142 / 0.965 | False / False | 3 / 3 |
-| matrix-filter-083 | RGBPS | 1920×1080 | `src.ConvertToYUV422(matrix="Rec709")` | 4.0324 / 4.3211 / 1.072 | 5.0861 / 4.1087 / 0.808 | False / False | 3 / 3 |
-| matrix-filter-084 | RGBPS | 1920×1080 | `src.ConvertToYUV420(matrix="Rec709")` | 4.4318 / 4.8176 / 1.087 | 5.2850 / 4.4971 / 0.851 | False / False | 3 / 3 |
+| matrix-filter-083 | RGBPS | 1920×1080 | `src.ConvertToYUV422(matrix="Rec709")` | 4.0324 / 4.0152 / 0.996 | 5.0861 / 3.8054 / 0.748 | False / False | 3 / 3 |
+| matrix-filter-084 | RGBPS | 1920×1080 | `src.ConvertToYUV420(matrix="Rec709")` | 4.4318 / 4.4991 / 1.015 | 5.2850 / 4.1301 / 0.781 | False / False | 3 / 3 |
 | matrix-filter-085 | RGBAP16 | 1920×1080 | `src.ConvertToYUV444(matrix="Rec709")` | 1.0853 / 0.8701 / 0.802 | 1.1031 / 0.8521 / 0.772 | False / False | 3 / 3 |
 | matrix-filter-086 | RGBAP16 | 1920×1080 | `src.ConvertToYUV422(matrix="Rec709")` | 3.2149 / 3.0386 / 0.945 | 3.6654 / 2.3531 / 0.642 | False / False | 3 / 3 |
 | matrix-filter-087 | RGBAP16 | 1920×1080 | `src.ConvertToYUV420(matrix="Rec709")` | 3.5749 / 3.2706 / 0.915 | 4.2971 / 2.5532 / 0.594 | False / False | 3 / 3 |
@@ -494,108 +494,108 @@ Expand each family. CPU cells are **upstream ms / new ms / ratio**; low-work rat
 | resize-343 | Y16 | 1920×1080 | `src.BicubicResize(960,540)` | 0.9362 / 0.8765 / 0.936 | 0.7138 / 0.4452 / 0.624 | True / True | 3 / 3 |
 | resize-344 | Y16 | 1920×1080 | `src.BicubicResize(2880,1620)` | 2.9383 / 1.6431 / 0.559 | 1.9144 / 1.1524 / 0.602 | True / True | 3 / 3 |
 | resize-345 | Y16 | 1920×1080 | `src.BicubicResize(960,1620)` | 1.6911 / 1.6872 / 0.998 | 1.3518 / 1.0413 / 0.770 | True / True | 3 / 3 |
-| resize-346 | Y32 | 1920×1080 | `src.BicubicResize(960,540)` | 1.0781 / 1.4026 / 1.301 | 1.3239 / 1.1803 / 0.892 | False / False | 3 / 3 |
+| resize-346 | Y32 | 1920×1080 | `src.BicubicResize(960,540)` | 1.0781 / 0.9923 / 0.920 | 1.3239 / 0.8671 / 0.655 | False / False | 3 / 3 |
 | resize-347 | Y32 | 1920×1080 | `src.BicubicResize(2880,1620)` | 5.6237 / 3.2069 / 0.570 | 2.8737 / 2.7868 / 0.970 | False / False | 3 / 3 |
-| resize-348 | Y32 | 1920×1080 | `src.BicubicResize(960,1620)` | 2.1103 / 2.4943 / 1.182 | 2.7281 / 2.2574 / 0.827 | False / False | 3 / 3 |
+| resize-348 | Y32 | 1920×1080 | `src.BicubicResize(960,1620)` | 2.1103 / 2.1179 / 1.004 | 2.7281 / 1.8671 / 0.684 | False / False | 3 / 3 |
 | resize-349 | Y8 | 1920×1080 | `src.LanczosResize(960,540)` | 0.7702 / 0.8993 / 1.168 | 0.5860 / 0.5295 / 0.904 | True / True | 3 / 3 |
 | resize-350 | Y8 | 1920×1080 | `src.LanczosResize(2880,1620)` | 2.6613 / 2.2625 / 0.850 | 1.8927 / 1.5358 / 0.811 | True / True | 3 / 3 |
 | resize-351 | Y8 | 1920×1080 | `src.LanczosResize(960,1620)` | 1.4337 / 1.7210 / 1.200 | 1.2367 / 1.0943 / 0.885 | True / True | 3 / 3 |
 | resize-352 | Y16 | 1920×1080 | `src.LanczosResize(960,540)` | 0.9902 / 0.9060 / 0.915 | 0.7162 / 0.6247 / 0.872 | True / True | 3 / 3 |
 | resize-353 | Y16 | 1920×1080 | `src.LanczosResize(2880,1620)` | 3.3197 / 2.2060 / 0.665 | 2.3961 / 1.5069 / 0.629 | True / True | 3 / 3 |
 | resize-354 | Y16 | 1920×1080 | `src.LanczosResize(960,1620)` | 1.8410 / 1.8360 / 0.997 | 1.3737 / 1.3362 / 0.973 | True / True | 3 / 3 |
-| resize-355 | Y32 | 1920×1080 | `src.LanczosResize(960,540)` | 1.4957 / 1.7561 / 1.174 | 1.8703 / 1.6211 / 0.867 | False / False | 3 / 3 |
+| resize-355 | Y32 | 1920×1080 | `src.LanczosResize(960,540)` | 1.4957 / 1.3497 / 0.902 | 1.8703 / 1.1757 / 0.629 | False / False | 3 / 3 |
 | resize-356 | Y32 | 1920×1080 | `src.LanczosResize(2880,1620)` | 3.4958 / 3.9102 / 1.119 | 3.4024 / 3.3175 / 0.975 | False / False | 3 / 3 |
-| resize-357 | Y32 | 1920×1080 | `src.LanczosResize(960,1620)` | 2.7844 / 3.2649 / 1.173 | 3.6374 / 3.0752 / 0.845 | False / False | 3 / 3 |
+| resize-357 | Y32 | 1920×1080 | `src.LanczosResize(960,1620)` | 2.7844 / 2.7048 / 0.971 | 3.6374 / 2.5906 / 0.712 | False / False | 3 / 3 |
 | resize-358 | Y8 | 1920×1080 | `src.Lanczos4Resize(960,540)` | 0.8675 / 0.9410 / 1.085 | 0.6547 / 0.6175 / 0.943 | True / True | 3 / 3 |
 | resize-359 | Y8 | 1920×1080 | `src.Lanczos4Resize(2880,1620)` | 3.2955 / 3.3134 / 1.005 | 2.2657 / 2.0142 / 0.889 | True / True | 3 / 3 |
 | resize-360 | Y8 | 1920×1080 | `src.Lanczos4Resize(960,1620)` | 1.5631 / 1.8910 / 1.210 | 1.4571 / 1.2909 / 0.886 | True / True | 3 / 3 |
 | resize-361 | Y16 | 1920×1080 | `src.Lanczos4Resize(960,540)` | 1.0659 / 0.9438 / 0.885 | 0.9042 / 0.7795 / 0.862 | True / True | 3 / 3 |
 | resize-362 | Y16 | 1920×1080 | `src.Lanczos4Resize(2880,1620)` | 3.3931 / 3.2599 / 0.961 | 2.6651 / 1.8710 / 0.702 | True / True | 3 / 3 |
 | resize-363 | Y16 | 1920×1080 | `src.Lanczos4Resize(960,1620)` | 1.9666 / 1.9752 / 1.004 | 1.7817 / 1.5624 / 0.877 | True / True | 3 / 3 |
-| resize-364 | Y32 | 1920×1080 | `src.Lanczos4Resize(960,540)` | 1.6435 / 2.3688 / 1.441 | 2.0522 / 2.2093 / 1.077 | False / False | 3 / 3 |
+| resize-364 | Y32 | 1920×1080 | `src.Lanczos4Resize(960,540)` | 1.6435 / 1.6946 / 1.031 | 2.0522 / 1.5923 / 0.776 | False / False | 3 / 3 |
 | resize-365 | Y32 | 1920×1080 | `src.Lanczos4Resize(2880,1620)` | 3.8317 / 4.6564 / 1.215 | 3.8644 / 4.1946 / 1.085 | False / False | 3 / 3 |
-| resize-366 | Y32 | 1920×1080 | `src.Lanczos4Resize(960,1620)` | 3.0492 / 4.1323 / 1.355 | 3.9017 / 3.9476 / 1.012 | False / False | 3 / 3 |
+| resize-366 | Y32 | 1920×1080 | `src.Lanczos4Resize(960,1620)` | 3.0492 / 3.1686 / 1.039 | 3.9017 / 3.0004 / 0.769 | False / False | 3 / 3 |
 | resize-367 | Y8 | 1920×1080 | `src.BlackmanResize(960,540)` | 0.7988 / 0.9442 / 1.182 | 0.6543 / 0.6425 / 0.982 | True / True | 3 / 3 |
 | resize-368 | Y8 | 1920×1080 | `src.BlackmanResize(2880,1620)` | 2.6851 / 3.2808 / 1.222 | 2.2287 / 1.9943 / 0.895 | True / True | 3 / 3 |
 | resize-369 | Y8 | 1920×1080 | `src.BlackmanResize(960,1620)` | 1.5314 / 1.8810 / 1.228 | 1.4558 / 1.2919 / 0.887 | True / True | 3 / 3 |
 | resize-370 | Y16 | 1920×1080 | `src.BlackmanResize(960,540)` | 1.0585 / 0.9302 / 0.879 | 0.9184 / 0.7755 / 0.844 | True / True | 3 / 3 |
 | resize-371 | Y16 | 1920×1080 | `src.BlackmanResize(2880,1620)` | 3.2790 / 3.2113 / 0.979 | 2.6843 / 1.8702 / 0.697 | True / True | 3 / 3 |
 | resize-372 | Y16 | 1920×1080 | `src.BlackmanResize(960,1620)` | 1.9318 / 1.9232 / 0.996 | 1.7237 / 1.5906 / 0.923 | True / True | 3 / 3 |
-| resize-373 | Y32 | 1920×1080 | `src.BlackmanResize(960,540)` | 1.6204 / 2.3047 / 1.422 | 2.0081 / 2.1393 / 1.065 | False / False | 3 / 3 |
+| resize-373 | Y32 | 1920×1080 | `src.BlackmanResize(960,540)` | 1.6204 / 1.6952 / 1.046 | 2.0081 / 1.6412 / 0.817 | False / False | 3 / 3 |
 | resize-374 | Y32 | 1920×1080 | `src.BlackmanResize(2880,1620)` | 3.7956 / 4.7328 / 1.247 | 3.6420 / 3.8658 / 1.061 | False / False | 3 / 3 |
-| resize-375 | Y32 | 1920×1080 | `src.BlackmanResize(960,1620)` | 3.0324 / 4.1035 / 1.353 | 3.8746 / 3.7477 / 0.967 | False / False | 3 / 3 |
+| resize-375 | Y32 | 1920×1080 | `src.BlackmanResize(960,1620)` | 3.0324 / 3.1466 / 1.038 | 3.8746 / 2.9147 / 0.752 | False / False | 3 / 3 |
 | resize-376 | Y8 | 1920×1080 | `src.Spline16Resize(960,540)` | 0.7178 / 0.8403 / 1.171 | 0.3961 / 0.3776 / 0.953 | True / True | 3 / 3 |
 | resize-377 | Y8 | 1920×1080 | `src.Spline16Resize(2880,1620)` | 2.3308 / 1.6885 / 0.724 | 1.3922 / 1.0866 / 0.781 | True / True | 3 / 3 |
 | resize-378 | Y8 | 1920×1080 | `src.Spline16Resize(960,1620)` | 1.3169 / 1.5596 / 1.184 | 0.8203 / 0.7905 / 0.964 | True / True | 3 / 3 |
 | resize-379 | Y16 | 1920×1080 | `src.Spline16Resize(960,540)` | 0.9440 / 0.8522 / 0.903 | 0.6090 / 0.4327 / 0.710 | True / True | 3 / 3 |
 | resize-380 | Y16 | 1920×1080 | `src.Spline16Resize(2880,1620)` | 2.9790 / 1.6434 / 0.552 | 1.9962 / 1.1564 / 0.579 | True / True | 3 / 3 |
 | resize-381 | Y16 | 1920×1080 | `src.Spline16Resize(960,1620)` | 1.8173 / 1.7216 / 0.947 | 1.5854 / 1.0640 / 0.671 | True / True | 3 / 3 |
-| resize-382 | Y32 | 1920×1080 | `src.Spline16Resize(960,540)` | 1.3098 / 1.4483 / 1.106 | 1.1952 / 1.2616 / 1.056 | False / False | 3 / 3 |
+| resize-382 | Y32 | 1920×1080 | `src.Spline16Resize(960,540)` | 1.3098 / 0.9876 / 0.754 | 1.1952 / 0.9022 / 0.755 | False / False | 3 / 3 |
 | resize-383 | Y32 | 1920×1080 | `src.Spline16Resize(2880,1620)` | 5.7237 / 3.4240 / 0.598 | 3.0358 / 2.8745 / 0.947 | False / False | 3 / 3 |
-| resize-384 | Y32 | 1920×1080 | `src.Spline16Resize(960,1620)` | 2.1304 / 2.4814 / 1.165 | 2.7151 / 2.3338 / 0.860 | False / False | 3 / 3 |
+| resize-384 | Y32 | 1920×1080 | `src.Spline16Resize(960,1620)` | 2.1304 / 2.0464 / 0.961 | 2.7151 / 1.9979 / 0.736 | False / False | 3 / 3 |
 | resize-385 | Y8 | 1920×1080 | `src.Spline36Resize(960,540)` | 0.7855 / 0.8957 / 1.140 | 0.5871 / 0.5294 / 0.902 | True / True | 3 / 3 |
 | resize-386 | Y8 | 1920×1080 | `src.Spline36Resize(2880,1620)` | 2.7129 / 2.2391 / 0.825 | 1.8550 / 1.5389 / 0.830 | True / True | 3 / 3 |
 | resize-387 | Y8 | 1920×1080 | `src.Spline36Resize(960,1620)` | 1.5344 / 1.7277 / 1.126 | 1.2480 / 1.0890 / 0.873 | True / True | 3 / 3 |
 | resize-388 | Y16 | 1920×1080 | `src.Spline36Resize(960,540)` | 1.0232 / 0.9255 / 0.905 | 0.7260 / 0.6170 / 0.850 | True / True | 3 / 3 |
 | resize-389 | Y16 | 1920×1080 | `src.Spline36Resize(2880,1620)` | 3.2689 / 2.1390 / 0.654 | 2.4113 / 1.4961 / 0.620 | True / True | 3 / 3 |
 | resize-390 | Y16 | 1920×1080 | `src.Spline36Resize(960,1620)` | 1.9002 / 1.8037 / 0.949 | 1.3576 / 1.3541 / 0.997 | True / True | 3 / 3 |
-| resize-391 | Y32 | 1920×1080 | `src.Spline36Resize(960,540)` | 1.5437 / 1.8662 / 1.209 | 1.9536 / 1.6331 / 0.836 | False / False | 3 / 3 |
+| resize-391 | Y32 | 1920×1080 | `src.Spline36Resize(960,540)` | 1.5437 / 1.3389 / 0.867 | 1.9536 / 1.2874 / 0.659 | False / False | 3 / 3 |
 | resize-392 | Y32 | 1920×1080 | `src.Spline36Resize(2880,1620)` | 3.5722 / 3.9793 / 1.114 | 3.2024 / 3.2262 / 1.007 | False / False | 3 / 3 |
-| resize-393 | Y32 | 1920×1080 | `src.Spline36Resize(960,1620)` | 2.8494 / 3.1949 / 1.121 | 3.7067 / 2.9750 / 0.803 | False / False | 3 / 3 |
+| resize-393 | Y32 | 1920×1080 | `src.Spline36Resize(960,1620)` | 2.8494 / 2.5562 / 0.897 | 3.7067 / 2.3467 / 0.633 | False / False | 3 / 3 |
 | resize-394 | Y8 | 1920×1080 | `src.Spline64Resize(960,540)` | 0.8251 / 0.9429 / 1.143 | 0.6457 / 0.6432 / 0.996 | True / True | 3 / 3 |
 | resize-395 | Y8 | 1920×1080 | `src.Spline64Resize(2880,1620)` | 2.7744 / 3.2935 / 1.187 | 2.2239 / 1.9753 / 0.888 | True / True | 3 / 3 |
 | resize-396 | Y8 | 1920×1080 | `src.Spline64Resize(960,1620)` | 1.5412 / 1.8788 / 1.219 | 1.4401 / 1.3336 / 0.926 | True / True | 3 / 3 |
 | resize-397 | Y16 | 1920×1080 | `src.Spline64Resize(960,540)` | 1.0724 / 0.9379 / 0.875 | 0.9127 / 0.7700 / 0.844 | True / True | 3 / 3 |
 | resize-398 | Y16 | 1920×1080 | `src.Spline64Resize(2880,1620)` | 3.4433 / 3.1894 / 0.926 | 2.6949 / 1.9939 / 0.740 | True / True | 3 / 3 |
 | resize-399 | Y16 | 1920×1080 | `src.Spline64Resize(960,1620)` | 2.0697 / 1.9264 / 0.931 | 1.7929 / 1.5602 / 0.870 | True / True | 3 / 3 |
-| resize-400 | Y32 | 1920×1080 | `src.Spline64Resize(960,540)` | 1.7629 / 2.3072 / 1.309 | 2.0882 / 2.0754 / 0.994 | False / False | 3 / 3 |
+| resize-400 | Y32 | 1920×1080 | `src.Spline64Resize(960,540)` | 1.7629 / 1.7026 / 0.966 | 2.0882 / 1.4684 / 0.703 | False / False | 3 / 3 |
 | resize-401 | Y32 | 1920×1080 | `src.Spline64Resize(2880,1620)` | 3.8120 / 4.8808 / 1.280 | 3.5669 / 4.0522 / 1.136 | False / False | 3 / 3 |
-| resize-402 | Y32 | 1920×1080 | `src.Spline64Resize(960,1620)` | 3.0772 / 4.1241 / 1.340 | 3.8508 / 3.8947 / 1.011 | False / False | 3 / 3 |
+| resize-402 | Y32 | 1920×1080 | `src.Spline64Resize(960,1620)` | 3.0772 / 3.2365 / 1.052 | 3.8508 / 2.8506 / 0.740 | False / False | 3 / 3 |
 | resize-403 | Y8 | 1920×1080 | `src.GaussResize(960,540)` | 0.8175 / 0.9498 / 1.162 | 0.6590 / 0.6421 / 0.974 | True / True | 3 / 3 |
 | resize-404 | Y8 | 1920×1080 | `src.GaussResize(2880,1620)` | 2.7161 / 3.3141 / 1.220 | 2.2148 / 1.9744 / 0.891 | True / True | 3 / 3 |
 | resize-405 | Y8 | 1920×1080 | `src.GaussResize(960,1620)` | 1.5451 / 1.9325 / 1.251 | 1.4352 / 1.3294 / 0.926 | True / True | 3 / 3 |
 | resize-406 | Y16 | 1920×1080 | `src.GaussResize(960,540)` | 1.0839 / 0.9474 / 0.874 | 0.9097 / 0.7708 / 0.847 | True / True | 3 / 3 |
 | resize-407 | Y16 | 1920×1080 | `src.GaussResize(2880,1620)` | 3.7006 / 3.3390 / 0.902 | 2.6110 / 1.8941 / 0.725 | True / True | 3 / 3 |
 | resize-408 | Y16 | 1920×1080 | `src.GaussResize(960,1620)` | 2.1267 / 1.9631 / 0.923 | 1.7633 / 1.5584 / 0.884 | True / True | 3 / 3 |
-| resize-409 | Y32 | 1920×1080 | `src.GaussResize(960,540)` | 1.7128 / 2.2685 / 1.324 | 2.0014 / 2.0404 / 1.019 | False / False | 3 / 3 |
+| resize-409 | Y32 | 1920×1080 | `src.GaussResize(960,540)` | 1.7128 / 1.7165 / 1.002 | 2.0014 / 1.5838 / 0.791 | False / False | 3 / 3 |
 | resize-410 | Y32 | 1920×1080 | `src.GaussResize(2880,1620)` | 4.0593 / 4.5934 / 1.132 | 3.6274 / 3.9222 / 1.081 | False / False | 3 / 3 |
-| resize-411 | Y32 | 1920×1080 | `src.GaussResize(960,1620)` | 3.0458 / 4.1317 / 1.357 | 3.7938 / 3.7378 / 0.985 | False / False | 3 / 3 |
+| resize-411 | Y32 | 1920×1080 | `src.GaussResize(960,1620)` | 3.0458 / 3.2140 / 1.055 | 3.7938 / 2.9667 / 0.782 | False / False | 3 / 3 |
 | resize-412 | Y8 | 1920×1080 | `src.SincResize(960,540)` | 0.8025 / 0.9425 / 1.174 | 0.6536 / 0.6568 / 1.005 | True / True | 3 / 3 |
 | resize-413 | Y8 | 1920×1080 | `src.SincResize(2880,1620)` | 2.7375 / 3.3194 / 1.213 | 2.1922 / 1.9666 / 0.897 | True / True | 3 / 3 |
 | resize-414 | Y8 | 1920×1080 | `src.SincResize(960,1620)` | 1.5236 / 1.8833 / 1.236 | 1.4538 / 1.3326 / 0.917 | True / True | 3 / 3 |
 | resize-415 | Y16 | 1920×1080 | `src.SincResize(960,540)` | 1.0501 / 0.9368 / 0.892 | 0.9107 / 0.7761 / 0.852 | True / True | 3 / 3 |
 | resize-416 | Y16 | 1920×1080 | `src.SincResize(2880,1620)` | 3.2920 / 3.2343 / 0.982 | 2.6467 / 1.9294 / 0.729 | True / True | 3 / 3 |
 | resize-417 | Y16 | 1920×1080 | `src.SincResize(960,1620)` | 1.9782 / 1.9562 / 0.989 | 1.8187 / 1.5673 / 0.862 | True / True | 3 / 3 |
-| resize-418 | Y32 | 1920×1080 | `src.SincResize(960,540)` | 1.5931 / 2.3817 / 1.495 | 2.0575 / 2.1163 / 1.029 | False / False | 3 / 3 |
+| resize-418 | Y32 | 1920×1080 | `src.SincResize(960,540)` | 1.5931 / 1.6899 / 1.061 | 2.0575 / 1.5059 / 0.732 | False / False | 3 / 3 |
 | resize-419 | Y32 | 1920×1080 | `src.SincResize(2880,1620)` | 3.7912 / 4.6342 / 1.222 | 3.6092 / 3.9649 / 1.099 | False / False | 3 / 3 |
-| resize-420 | Y32 | 1920×1080 | `src.SincResize(960,1620)` | 3.0939 / 3.9974 / 1.292 | 3.8684 / 3.7822 / 0.978 | False / False | 3 / 3 |
+| resize-420 | Y32 | 1920×1080 | `src.SincResize(960,1620)` | 3.0939 / 3.1701 / 1.025 | 3.8684 / 2.8997 / 0.750 | False / False | 3 / 3 |
 | resize-421 | Y8 | 1920×1080 | `src.SinPowerResize(960,540)` | 0.7288 / 0.8438 / 1.158 | 0.3937 / 0.3662 / 0.930 | True / True | 3 / 3 |
 | resize-422 | Y8 | 1920×1080 | `src.SinPowerResize(2880,1620)` | 2.3622 / 1.6876 / 0.714 | 1.3013 / 1.0938 / 0.841 | True / True | 3 / 3 |
 | resize-423 | Y8 | 1920×1080 | `src.SinPowerResize(960,1620)` | 1.3208 / 1.5528 / 1.176 | 0.8224 / 0.7810 / 0.950 | True / True | 3 / 3 |
 | resize-424 | Y16 | 1920×1080 | `src.SinPowerResize(960,540)` | 0.9394 / 0.8560 / 0.911 | 0.9661 / 0.4345 / 0.450 | True / True | 3 / 3 |
 | resize-425 | Y16 | 1920×1080 | `src.SinPowerResize(2880,1620)` | 2.9090 / 1.6250 / 0.559 | 1.9160 / 1.1694 / 0.610 | True / True | 3 / 3 |
 | resize-426 | Y16 | 1920×1080 | `src.SinPowerResize(960,1620)` | 1.7081 / 1.7352 / 1.016 | 1.5344 / 1.0181 / 0.664 | True / True | 3 / 3 |
-| resize-427 | Y32 | 1920×1080 | `src.SinPowerResize(960,540)` | 1.0324 / 1.3379 / 1.296 | 1.3493 / 1.2370 / 0.917 | False / False | 3 / 3 |
+| resize-427 | Y32 | 1920×1080 | `src.SinPowerResize(960,540)` | 1.0324 / 0.9782 / 0.948 | 1.3493 / 0.8894 / 0.659 | False / False | 3 / 3 |
 | resize-428 | Y32 | 1920×1080 | `src.SinPowerResize(2880,1620)` | 5.6978 / 3.4024 / 0.597 | 2.9997 / 2.6589 / 0.886 | False / False | 3 / 3 |
-| resize-429 | Y32 | 1920×1080 | `src.SinPowerResize(960,1620)` | 2.0579 / 2.4820 / 1.206 | 2.7045 / 2.3134 / 0.855 | False / False | 3 / 3 |
+| resize-429 | Y32 | 1920×1080 | `src.SinPowerResize(960,1620)` | 2.0579 / 2.0664 / 1.004 | 2.7045 / 1.9270 / 0.713 | False / False | 3 / 3 |
 | resize-430 | Y8 | 1920×1080 | `src.SincLin2Resize(960,540)` | 2.3422 / 2.7254 / 1.164 | 2.6686 / 2.2061 / 0.827 | True / True | 3 / 3 |
 | resize-431 | Y8 | 1920×1080 | `src.SincLin2Resize(2880,1620)` | 6.1501 / 18.3307 / 2.981 | 7.1435 / 6.7783 / 0.949 | True / True | 3 / 3 |
 | resize-432 | Y8 | 1920×1080 | `src.SincLin2Resize(960,1620)` | 4.4813 / 5.4308 / 1.212 | 5.4823 / 4.1762 / 0.762 | True / True | 3 / 3 |
 | resize-433 | Y16 | 1920×1080 | `src.SincLin2Resize(960,540)` | 3.1909 / 2.7056 / 0.848 | 3.0745 / 2.2782 / 0.741 | True / True | 3 / 3 |
 | resize-434 | Y16 | 1920×1080 | `src.SincLin2Resize(2880,1620)` | 7.0710 / 16.8101 / 2.377 | 7.4358 / 6.4249 / 0.864 | True / True | 3 / 3 |
 | resize-435 | Y16 | 1920×1080 | `src.SincLin2Resize(960,1620)` | 5.4226 / 5.4255 / 1.001 | 6.0324 / 4.3683 / 0.724 | True / True | 3 / 3 |
-| resize-436 | Y32 | 1920×1080 | `src.SincLin2Resize(960,540)` | 5.3759 / 7.0704 / 1.315 | 5.1562 / 6.3934 / 1.240 | False / False | 3 / 3 |
+| resize-436 | Y32 | 1920×1080 | `src.SincLin2Resize(960,540)` | 5.3759 / 6.4304 / 1.196 | 5.1562 / 4.6707 / 0.906 | False / False | 3 / 3 |
 | resize-437 | Y32 | 1920×1080 | `src.SincLin2Resize(2880,1620)` | 11.0242 / 14.0389 / 1.273 | 10.7055 / 13.8793 / 1.296 | False / False | 3 / 3 |
-| resize-438 | Y32 | 1920×1080 | `src.SincLin2Resize(960,1620)` | 9.4673 / 12.2331 / 1.292 | 9.4550 / 11.3322 / 1.199 | False / False | 3 / 3 |
+| resize-438 | Y32 | 1920×1080 | `src.SincLin2Resize(960,1620)` | 9.4673 / 11.2246 / 1.186 | 9.4550 / 8.5253 / 0.902 | False / False | 3 / 3 |
 | resize-439 | Y8 | 1920×1080 | `src.UserDefined2Resize(960,540)` | 0.7678 / 0.8714 / 1.135 | 0.5538 / 0.4592 / 0.829 | True / True | 3 / 3 |
 | resize-440 | Y8 | 1920×1080 | `src.UserDefined2Resize(2880,1620)` | 2.5748 / 2.1779 / 0.846 | 1.7301 / 1.5206 / 0.879 | True / True | 3 / 3 |
 | resize-441 | Y8 | 1920×1080 | `src.UserDefined2Resize(960,1620)` | 1.4414 / 1.6865 / 1.170 | 1.1418 / 1.0106 / 0.885 | True / True | 3 / 3 |
 | resize-442 | Y16 | 1920×1080 | `src.UserDefined2Resize(960,540)` | 1.0083 / 0.8791 / 0.872 | 0.6226 / 0.5159 / 0.829 | True / True | 3 / 3 |
 | resize-443 | Y16 | 1920×1080 | `src.UserDefined2Resize(2880,1620)` | 3.2584 / 2.1394 / 0.657 | 2.4561 / 1.5602 / 0.635 | True / True | 3 / 3 |
 | resize-444 | Y16 | 1920×1080 | `src.UserDefined2Resize(960,1620)` | 1.8377 / 1.8893 / 1.028 | 1.1901 / 1.1847 / 0.995 | True / True | 3 / 3 |
-| resize-445 | Y32 | 1920×1080 | `src.UserDefined2Resize(960,540)` | 1.4076 / 1.6052 / 1.140 | 2.1415 / 1.4827 / 0.692 | False / False | 3 / 3 |
+| resize-445 | Y32 | 1920×1080 | `src.UserDefined2Resize(960,540)` | 1.4076 / 1.1105 / 0.789 | 2.1415 / 1.0112 / 0.472 | False / False | 3 / 3 |
 | resize-446 | Y32 | 1920×1080 | `src.UserDefined2Resize(2880,1620)` | 3.3421 / 3.4975 / 1.047 | 3.1079 / 3.0446 / 0.980 | False / False | 3 / 3 |
-| resize-447 | Y32 | 1920×1080 | `src.UserDefined2Resize(960,1620)` | 2.7393 / 2.9307 / 1.070 | 3.4899 / 2.6082 / 0.747 | False / False | 3 / 3 |
+| resize-447 | Y32 | 1920×1080 | `src.UserDefined2Resize(960,1620)` | 2.7393 / 2.2388 / 0.817 | 3.4899 / 2.0823 / 0.597 | False / False | 3 / 3 |
 | extra-001 | Y10 | 1920×1080 | `src.BilinearResize(960,540)` | 0.8304 / 0.4636 / 0.558 | 0.4588 / 0.3325 / 0.725 | True / True | 3 / 3 |
 | extra-002 | Y10 | 1920×1080 | `src.BilinearResize(2880,1620)` | 2.6077 / 1.2123 / 0.465 | 1.3326 / 0.8306 / 0.623 | True / True | 3 / 3 |
 | extra-003 | Y10 | 1920×1080 | `src.LanczosResize(960,540)` | 0.9130 / 0.9673 / 1.059 | 0.6888 / 0.6333 / 0.919 | True / True | 3 / 3 |
@@ -636,7 +636,7 @@ Expand each family. CPU cells are **upstream ms / new ms / ratio**; low-work rat
 | resize-composed-459 | YV12 | 1920×1080 | `src.LanczosResize(2880,1620)` | 4.1591 / 3.4695 / 0.834 | 2.9873 / 2.3026 / 0.771 | True / True | 3 / 3 |
 | resize-composed-460 | YUV420P16 | 1920×1080 | `src.LanczosResize(960,540)` | 1.5391 / 1.3972 / 0.908 | 1.1575 / 0.9515 / 0.822 | True / True | 3 / 3 |
 | resize-composed-461 | YUV420P16 | 1920×1080 | `src.LanczosResize(2880,1620)` | 4.9817 / 3.3622 / 0.675 | 3.6770 / 2.4974 / 0.679 | True / True | 3 / 3 |
-| resize-composed-462 | YUV420PS | 1920×1080 | `src.LanczosResize(960,540)` | 2.3796 / 2.7697 / 1.164 | 4.1050 / 2.4870 / 0.606 | False / False | 3 / 3 |
+| resize-composed-462 | YUV420PS | 1920×1080 | `src.LanczosResize(960,540)` | 2.3796 / 2.1953 / 0.923 | 4.1050 / 1.9668 / 0.479 | False / False | 3 / 3 |
 | resize-composed-463 | YUV420PS | 1920×1080 | `src.LanczosResize(2880,1620)` | 5.2721 / 5.8350 / 1.107 | 5.2061 / 4.5544 / 0.875 | False / False | 3 / 3 |
 | resize-composed-464 | YUY2 | 1920×1080 | `src.LanczosResize(960,540)` | 2.1546 / 2.2028 / 1.022 | 1.7961 / 1.3756 / 0.766 | True / True | 3 / 3 |
 | resize-composed-465 | YUY2 | 1920×1080 | `src.LanczosResize(2880,1620)` | 6.3326 / 5.2108 / 0.823 | 4.4545 / 3.5529 / 0.798 | True / True | 3 / 3 |
@@ -1082,14 +1082,14 @@ Allocation and coefficient construction are outside these timings. Baseline and 
 | axis=H; filter=lanczos3; bits=8; width=640; height=360; target=320 | native | 0.0396 | 0.0372 | 0.940 | AVX512 | AMD current-code refresh, three rounds; exact C output. Existing upstream baseline retained. |
 | axis=H; filter=lanczos3; bits=16; width=640; height=360; target=320 | AVX2 | 0.0827 | 0.0847 | 1.024 | AVX2 | AMD current-code refresh, three rounds; exact C output. Existing upstream baseline retained. |
 | axis=H; filter=lanczos3; bits=16; width=640; height=360; target=320 | native | 0.0467 | 0.0498 | 1.067 | AVX512 | AMD current-code refresh, three rounds; exact C output. Existing upstream baseline retained. |
-| axis=H; filter=lanczos3; bits=32; width=640; height=360; target=320 | AVX2 | 0.1096 | 0.1289 | 1.176 | AVX2 | AMD current-code refresh, three rounds; exact C output. Existing upstream baseline retained. |
-| axis=H; filter=lanczos3; bits=32; width=640; height=360; target=320 | native | 0.1133 | 0.1157 | 1.021 | AVX512 | AMD current-code refresh, three rounds; exact C output. Existing upstream baseline retained. |
+| axis=H; filter=lanczos3; bits=32; width=640; height=360; target=320 | AVX2 | 0.1096 | 0.0996 | 0.909 | AVX2 | AMD current-code refresh, three rounds; exact C output. Existing upstream baseline retained. |
+| axis=H; filter=lanczos3; bits=32; width=640; height=360; target=320 | native | 0.1133 | 0.0773 | 0.683 | AVX512 | AMD current-code refresh, three rounds; exact C output. Existing upstream baseline retained. |
 | axis=H; filter=spline36; bits=8; width=640; height=360; target=320 | AVX2 | 0.0726 | 0.0848 | 1.168 | AVX2 | AMD current-code refresh, three rounds; exact C output. Existing upstream baseline retained. |
 | axis=H; filter=spline36; bits=8; width=640; height=360; target=320 | native | 0.0397 | 0.0367 | 0.925 | AVX512 | AMD current-code refresh, three rounds; exact C output. Existing upstream baseline retained. |
 | axis=H; filter=spline36; bits=16; width=640; height=360; target=320 | AVX2 | 0.0824 | 0.0863 | 1.048 | AVX2 | AMD current-code refresh, three rounds; exact C output. Existing upstream baseline retained. |
 | axis=H; filter=spline36; bits=16; width=640; height=360; target=320 | native | 0.0461 | 0.0504 | 1.094 | AVX512 | AMD current-code refresh, three rounds; exact C output. Existing upstream baseline retained. |
-| axis=H; filter=spline36; bits=32; width=640; height=360; target=320 | AVX2 | 0.1193 | 0.1297 | 1.087 | AVX2 | AMD current-code refresh, three rounds; exact C output. Existing upstream baseline retained. |
-| axis=H; filter=spline36; bits=32; width=640; height=360; target=320 | native | 0.1138 | 0.1143 | 1.004 | AVX512 | AMD current-code refresh, three rounds; exact C output. Existing upstream baseline retained. |
+| axis=H; filter=spline36; bits=32; width=640; height=360; target=320 | AVX2 | 0.1193 | 0.1017 | 0.853 | AVX2 | AMD current-code refresh, three rounds; exact C output. Existing upstream baseline retained. |
+| axis=H; filter=spline36; bits=32; width=640; height=360; target=320 | native | 0.1138 | 0.0774 | 0.680 | AVX512 | AMD current-code refresh, three rounds; exact C output. Existing upstream baseline retained. |
 | axis=H; filter=triangle; bits=8; width=640; height=360; target=960 | AVX2 | 0.2662 | 0.0702 | 0.264 | AVX2 | AMD current-code refresh, three rounds; exact C output. Existing upstream baseline retained. |
 | axis=H; filter=triangle; bits=8; width=640; height=360; target=960 | native | 0.0414 | 0.0336 | 0.813 | AVX512 | AMD current-code refresh, three rounds; exact C output. Existing upstream baseline retained. |
 | axis=H; filter=triangle; bits=16; width=640; height=360; target=960 | AVX2 | 0.2980 | 0.0671 | 0.225 | AVX2 | AMD current-code refresh, three rounds; exact C output. Existing upstream baseline retained. |
@@ -1154,14 +1154,14 @@ Allocation and coefficient construction are outside these timings. Baseline and 
 | axis=H; filter=lanczos3; bits=8; width=1920; height=1080; target=960 | native | 0.3701 | 0.3668 | 0.991 | AVX512 | AMD current-code refresh, three rounds; exact C output. Existing upstream baseline retained. |
 | axis=H; filter=lanczos3; bits=16; width=1920; height=1080; target=960 | AVX2 | 0.7312 | 0.7466 | 1.021 | AVX2 | AMD current-code refresh, three rounds; exact C output. Existing upstream baseline retained. |
 | axis=H; filter=lanczos3; bits=16; width=1920; height=1080; target=960 | native | 0.4140 | 0.4877 | 1.178 | AVX512 | AMD current-code refresh, three rounds; exact C output. Existing upstream baseline retained. |
-| axis=H; filter=lanczos3; bits=32; width=1920; height=1080; target=960 | AVX2 | 1.0617 | 1.2519 | 1.179 | AVX2 | AMD current-code refresh, three rounds; exact C output. Existing upstream baseline retained. |
-| axis=H; filter=lanczos3; bits=32; width=1920; height=1080; target=960 | native | 1.1187 | 1.1656 | 1.042 | AVX512 | AMD current-code refresh, three rounds; exact C output. Existing upstream baseline retained. |
+| axis=H; filter=lanczos3; bits=32; width=1920; height=1080; target=960 | AVX2 | 1.0617 | 0.9049 | 0.852 | AVX2 | AMD current-code refresh, three rounds; exact C output. Existing upstream baseline retained. |
+| axis=H; filter=lanczos3; bits=32; width=1920; height=1080; target=960 | native | 1.1187 | 0.7758 | 0.693 | AVX512 | AMD current-code refresh, three rounds; exact C output. Existing upstream baseline retained. |
 | axis=H; filter=spline36; bits=8; width=1920; height=1080; target=960 | AVX2 | 0.6445 | 0.7148 | 1.109 | AVX2 | AMD current-code refresh, three rounds; exact C output. Existing upstream baseline retained. |
 | axis=H; filter=spline36; bits=8; width=1920; height=1080; target=960 | native | 0.3625 | 0.3720 | 1.026 | AVX512 | AMD current-code refresh, three rounds; exact C output. Existing upstream baseline retained. |
 | axis=H; filter=spline36; bits=16; width=1920; height=1080; target=960 | AVX2 | 0.7325 | 0.7412 | 1.012 | AVX2 | AMD current-code refresh, three rounds; exact C output. Existing upstream baseline retained. |
 | axis=H; filter=spline36; bits=16; width=1920; height=1080; target=960 | native | 0.4169 | 0.5010 | 1.202 | AVX512 | AMD current-code refresh, three rounds; exact C output. Existing upstream baseline retained. |
-| axis=H; filter=spline36; bits=32; width=1920; height=1080; target=960 | AVX2 | 1.0880 | 1.3265 | 1.219 | AVX2 | AMD current-code refresh, three rounds; exact C output. Existing upstream baseline retained. |
-| axis=H; filter=spline36; bits=32; width=1920; height=1080; target=960 | native | 1.1598 | 1.1896 | 1.026 | AVX512 | AMD current-code refresh, three rounds; exact C output. Existing upstream baseline retained. |
+| axis=H; filter=spline36; bits=32; width=1920; height=1080; target=960 | AVX2 | 1.0880 | 0.9239 | 0.849 | AVX2 | AMD current-code refresh, three rounds; exact C output. Existing upstream baseline retained. |
+| axis=H; filter=spline36; bits=32; width=1920; height=1080; target=960 | native | 1.1598 | 0.7823 | 0.675 | AVX512 | AMD current-code refresh, three rounds; exact C output. Existing upstream baseline retained. |
 | axis=H; filter=triangle; bits=8; width=1920; height=1080; target=2880 | AVX2 | 2.0130 | 0.6947 | 0.345 | AVX2 | AMD current-code refresh, three rounds; exact C output. Existing upstream baseline retained. |
 | axis=H; filter=triangle; bits=8; width=1920; height=1080; target=2880 | native | 0.4051 | 0.3393 | 0.838 | AVX512 | AMD current-code refresh, three rounds; exact C output. Existing upstream baseline retained. |
 | axis=H; filter=triangle; bits=16; width=1920; height=1080; target=2880 | AVX2 | 2.3284 | 0.6792 | 0.292 | AVX2 | AMD current-code refresh, three rounds; exact C output. Existing upstream baseline retained. |
@@ -1252,14 +1252,14 @@ Allocation and coefficient construction are outside these timings. Baseline and 
 | order=HV; filter=lanczos3; bits=8; dw=960; dh=540 | native | 0.5284 | 0.5230 | 0.990 | AVX512 | AMD current-code refresh, three rounds; exact C output. Existing upstream baseline retained. |
 | order=HV; filter=lanczos3; bits=16; dw=960; dh=540 | AVX2 | 1.0327 | 0.9180 | 0.889 | AVX2 | AMD current-code refresh, three rounds; exact C output. Existing upstream baseline retained. |
 | order=HV; filter=lanczos3; bits=16; dw=960; dh=540 | native | 0.6469 | 0.6253 | 0.967 | AVX512 | AMD current-code refresh, three rounds; exact C output. Existing upstream baseline retained. |
-| order=HV; filter=lanczos3; bits=32; dw=960; dh=540 | AVX2 | 1.5343 | 1.7943 | 1.169 | AVX2 | AMD current-code refresh, three rounds; exact C output. Existing upstream baseline retained. |
-| order=HV; filter=lanczos3; bits=32; dw=960; dh=540 | native | 1.7669 | 1.6729 | 0.947 | AVX512 | AMD current-code refresh, three rounds; exact C output. Existing upstream baseline retained. |
+| order=HV; filter=lanczos3; bits=32; dw=960; dh=540 | AVX2 | 1.5343 | 1.3385 | 0.872 | AVX2 | AMD current-code refresh, three rounds; exact C output. Existing upstream baseline retained. |
+| order=HV; filter=lanczos3; bits=32; dw=960; dh=540 | native | 1.7669 | 1.1892 | 0.673 | AVX512 | AMD current-code refresh, three rounds; exact C output. Existing upstream baseline retained. |
 | order=HV; filter=spline36; bits=8; dw=960; dh=540 | AVX2 | 0.8051 | 0.9061 | 1.126 | AVX2 | AMD current-code refresh, three rounds; exact C output. Existing upstream baseline retained. |
 | order=HV; filter=spline36; bits=8; dw=960; dh=540 | native | 0.5408 | 0.5330 | 0.986 | AVX512 | AMD current-code refresh, three rounds; exact C output. Existing upstream baseline retained. |
 | order=HV; filter=spline36; bits=16; dw=960; dh=540 | AVX2 | 1.0219 | 0.9250 | 0.905 | AVX2 | AMD current-code refresh, three rounds; exact C output. Existing upstream baseline retained. |
 | order=HV; filter=spline36; bits=16; dw=960; dh=540 | native | 0.6425 | 0.6397 | 0.996 | AVX512 | AMD current-code refresh, three rounds; exact C output. Existing upstream baseline retained. |
-| order=HV; filter=spline36; bits=32; dw=960; dh=540 | AVX2 | 1.5273 | 1.7464 | 1.143 | AVX2 | AMD current-code refresh, three rounds; exact C output. Existing upstream baseline retained. |
-| order=HV; filter=spline36; bits=32; dw=960; dh=540 | native | 1.8163 | 1.6775 | 0.924 | AVX512 | AMD current-code refresh, three rounds; exact C output. Existing upstream baseline retained. |
+| order=HV; filter=spline36; bits=32; dw=960; dh=540 | AVX2 | 1.5273 | 1.3767 | 0.901 | AVX2 | AMD current-code refresh, three rounds; exact C output. Existing upstream baseline retained. |
+| order=HV; filter=spline36; bits=32; dw=960; dh=540 | native | 1.8163 | 1.3645 | 0.751 | AVX512 | AMD current-code refresh, three rounds; exact C output. Existing upstream baseline retained. |
 | order=HV; filter=triangle; bits=8; dw=2880; dh=1620 | AVX2 | 2.4124 | 0.8346 | 0.346 | AVX2 | AMD current-code refresh, three rounds; exact C output. Existing upstream baseline retained. |
 | order=HV; filter=triangle; bits=8; dw=2880; dh=1620 | native | 0.8016 | 0.5046 | 0.630 | AVX512 | AMD current-code refresh, three rounds; exact C output. Existing upstream baseline retained. |
 | order=HV; filter=triangle; bits=16; dw=2880; dh=1620 | AVX2 | 2.9271 | 1.1350 | 0.388 | AVX2 | AMD current-code refresh, three rounds; exact C output. Existing upstream baseline retained. |
@@ -1288,14 +1288,14 @@ Allocation and coefficient construction are outside these timings. Baseline and 
 | order=VH; filter=lanczos3; bits=8; dw=960; dh=1620 | native | 1.0821 | 1.0989 | 1.015 | AVX512 | AMD current-code refresh, three rounds; exact C output. Existing upstream baseline retained. |
 | order=VH; filter=lanczos3; bits=16; dw=960; dh=1620 | AVX2 | 1.9065 | 1.9062 | 1.000 | AVX2 | AMD current-code refresh, three rounds; exact C output. Existing upstream baseline retained. |
 | order=VH; filter=lanczos3; bits=16; dw=960; dh=1620 | native | 1.2116 | 1.3957 | 1.152 | AVX512 | AMD current-code refresh, three rounds; exact C output. Existing upstream baseline retained. |
-| order=VH; filter=lanczos3; bits=32; dw=960; dh=1620 | AVX2 | 2.8961 | 3.1605 | 1.091 | AVX2 | AMD current-code refresh, three rounds; exact C output. Existing upstream baseline retained. |
-| order=VH; filter=lanczos3; bits=32; dw=960; dh=1620 | native | 3.6394 | 3.0084 | 0.827 | AVX512 | AMD current-code refresh, three rounds; exact C output. Existing upstream baseline retained. |
+| order=VH; filter=lanczos3; bits=32; dw=960; dh=1620 | AVX2 | 2.8961 | 2.6892 | 0.929 | AVX2 | AMD current-code refresh, three rounds; exact C output. Existing upstream baseline retained. |
+| order=VH; filter=lanczos3; bits=32; dw=960; dh=1620 | native | 3.6394 | 2.3984 | 0.659 | AVX512 | AMD current-code refresh, three rounds; exact C output. Existing upstream baseline retained. |
 | order=VH; filter=spline36; bits=8; dw=960; dh=1620 | AVX2 | 1.5171 | 1.8059 | 1.190 | AVX2 | AMD current-code refresh, three rounds; exact C output. Existing upstream baseline retained. |
 | order=VH; filter=spline36; bits=8; dw=960; dh=1620 | native | 1.0804 | 1.1332 | 1.049 | AVX512 | AMD current-code refresh, three rounds; exact C output. Existing upstream baseline retained. |
 | order=VH; filter=spline36; bits=16; dw=960; dh=1620 | AVX2 | 1.9092 | 2.0742 | 1.086 | AVX2 | AMD current-code refresh, three rounds; exact C output. Existing upstream baseline retained. |
 | order=VH; filter=spline36; bits=16; dw=960; dh=1620 | native | 1.1936 | 1.4756 | 1.236 | AVX512 | AMD current-code refresh, three rounds; exact C output. Existing upstream baseline retained. |
-| order=VH; filter=spline36; bits=32; dw=960; dh=1620 | AVX2 | 2.8742 | 3.0871 | 1.074 | AVX2 | AMD current-code refresh, three rounds; exact C output. Existing upstream baseline retained. |
-| order=VH; filter=spline36; bits=32; dw=960; dh=1620 | native | 3.6864 | 2.9581 | 0.802 | AVX512 | AMD current-code refresh, three rounds; exact C output. Existing upstream baseline retained. |
+| order=VH; filter=spline36; bits=32; dw=960; dh=1620 | AVX2 | 2.8742 | 2.5822 | 0.898 | AVX2 | AMD current-code refresh, three rounds; exact C output. Existing upstream baseline retained. |
+| order=VH; filter=spline36; bits=32; dw=960; dh=1620 | native | 3.6864 | 2.4317 | 0.660 | AVX512 | AMD current-code refresh, three rounds; exact C output. Existing upstream baseline retained. |
 
 </details>
 
@@ -1377,39 +1377,39 @@ Current module timings for these full-filter profiles are compared with their sa
 | Y16-LanczosResize-15-V | native | 1.8915 | 1.1199 | 0.592 |
 | Y16-LanczosResize-15-HV | avx2 | 3.1242 | 2.7134 | 0.868 |
 | Y16-LanczosResize-15-HV | native | 2.9314 | 2.3671 | 0.807 |
-| Y32-SincLin2Resize-3-H | avx2 | 1.0542 | 1.2423 | 1.178 |
-| Y32-SincLin2Resize-3-H | native | 1.0973 | 1.2172 | 1.109 |
+| Y32-SincLin2Resize-3-H | avx2 | 1.0542 | 0.9320 | 0.884 |
+| Y32-SincLin2Resize-3-H | native | 1.0973 | 0.7478 | 0.681 |
 | Y32-SincLin2Resize-3-V | avx2 | 0.5230 | 0.5735 | 1.096 |
 | Y32-SincLin2Resize-3-V | native | 0.5013 | 0.5503 | 1.098 |
-| Y32-SincLin2Resize-3-HV | avx2 | 1.4804 | 1.7627 | 1.191 |
-| Y32-SincLin2Resize-3-HV | native | 1.6985 | 1.6474 | 0.970 |
-| Y32-SincLin2Resize-8-H | avx2 | 1.9886 | 2.8750 | 1.446 |
-| Y32-SincLin2Resize-8-H | native | 1.7294 | 3.0568 | 1.768 |
+| Y32-SincLin2Resize-3-HV | avx2 | 1.4804 | 1.3370 | 0.903 |
+| Y32-SincLin2Resize-3-HV | native | 1.6985 | 1.1514 | 0.678 |
+| Y32-SincLin2Resize-8-H | avx2 | 1.9886 | 2.3931 | 1.203 |
+| Y32-SincLin2Resize-8-H | native | 1.7294 | 1.8958 | 1.096 |
 | Y32-SincLin2Resize-8-V | avx2 | 1.2897 | 1.3152 | 1.020 |
 | Y32-SincLin2Resize-8-V | native | 1.1928 | 1.2278 | 1.029 |
-| Y32-SincLin2Resize-8-HV | avx2 | 2.8924 | 3.8656 | 1.336 |
-| Y32-SincLin2Resize-8-HV | native | 2.5817 | 3.8601 | 1.495 |
-| Y32-SincLin2Resize-15-H | avx2 | 3.9519 | 5.6478 | 1.429 |
-| Y32-SincLin2Resize-15-H | native | 3.7489 | 4.9763 | 1.327 |
+| Y32-SincLin2Resize-8-HV | avx2 | 2.8924 | 3.3818 | 1.169 |
+| Y32-SincLin2Resize-8-HV | native | 2.5817 | 2.7885 | 1.080 |
+| Y32-SincLin2Resize-15-H | avx2 | 3.9519 | 5.0365 | 1.274 |
+| Y32-SincLin2Resize-15-H | native | 3.7489 | 3.2656 | 0.871 |
 | Y32-SincLin2Resize-15-V | avx2 | 2.2265 | 2.3243 | 1.044 |
 | Y32-SincLin2Resize-15-V | native | 2.2204 | 2.2902 | 1.031 |
-| Y32-SincLin2Resize-15-HV | avx2 | 5.4043 | 7.0644 | 1.307 |
-| Y32-SincLin2Resize-15-HV | native | 5.1479 | 6.4816 | 1.259 |
-| Y32-LanczosResize-3-H | avx2 | 1.0638 | 1.2710 | 1.195 |
-| Y32-LanczosResize-3-H | native | 1.1925 | 1.2867 | 1.079 |
+| Y32-SincLin2Resize-15-HV | avx2 | 5.4043 | 6.4668 | 1.197 |
+| Y32-SincLin2Resize-15-HV | native | 5.1479 | 4.6153 | 0.897 |
+| Y32-LanczosResize-3-H | avx2 | 1.0638 | 0.9087 | 0.854 |
+| Y32-LanczosResize-3-H | native | 1.1925 | 0.7406 | 0.621 |
 | Y32-LanczosResize-3-V | avx2 | 0.4882 | 0.5296 | 1.085 |
 | Y32-LanczosResize-3-V | native | 0.5137 | 0.5431 | 1.057 |
-| Y32-LanczosResize-3-HV | avx2 | 1.4770 | 1.7593 | 1.191 |
-| Y32-LanczosResize-3-HV | native | 1.7757 | 1.6842 | 0.948 |
-| Y32-LanczosResize-8-H | avx2 | 1.9824 | 2.8849 | 1.455 |
-| Y32-LanczosResize-8-H | native | 1.7725 | 2.9862 | 1.685 |
+| Y32-LanczosResize-3-HV | avx2 | 1.4770 | 1.3204 | 0.894 |
+| Y32-LanczosResize-3-HV | native | 1.7757 | 1.1748 | 0.662 |
+| Y32-LanczosResize-8-H | avx2 | 1.9824 | 2.3884 | 1.205 |
+| Y32-LanczosResize-8-H | native | 1.7725 | 1.8933 | 1.068 |
 | Y32-LanczosResize-8-V | avx2 | 1.2387 | 1.2116 | 0.978 |
 | Y32-LanczosResize-8-V | native | 1.2592 | 1.3951 | 1.108 |
-| Y32-LanczosResize-8-HV | avx2 | 2.8526 | 3.8651 | 1.355 |
-| Y32-LanczosResize-8-HV | native | 2.6176 | 3.8447 | 1.469 |
-| Y32-LanczosResize-15-H | avx2 | 3.9562 | 5.5312 | 1.398 |
-| Y32-LanczosResize-15-H | native | 3.7687 | 5.0039 | 1.328 |
+| Y32-LanczosResize-8-HV | avx2 | 2.8526 | 3.3674 | 1.180 |
+| Y32-LanczosResize-8-HV | native | 2.6176 | 2.7780 | 1.061 |
+| Y32-LanczosResize-15-H | avx2 | 3.9562 | 5.0220 | 1.269 |
+| Y32-LanczosResize-15-H | native | 3.7687 | 3.3820 | 0.897 |
 | Y32-LanczosResize-15-V | avx2 | 2.3319 | 2.2582 | 0.968 |
 | Y32-LanczosResize-15-V | native | 2.2223 | 2.3269 | 1.047 |
-| Y32-LanczosResize-15-HV | avx2 | 5.4205 | 7.0081 | 1.293 |
-| Y32-LanczosResize-15-HV | native | 4.9911 | 6.4532 | 1.293 |
+| Y32-LanczosResize-15-HV | avx2 | 5.4205 | 6.5587 | 1.210 |
+| Y32-LanczosResize-15-HV | native | 4.9911 | 4.6437 | 0.930 |

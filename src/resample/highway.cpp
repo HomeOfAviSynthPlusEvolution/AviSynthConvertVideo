@@ -637,7 +637,30 @@ auto StrideFourHorizontalSum(D d, const resample::Coefficients& plan, const resa
   return sum;
 }
 
-template <bool stride_four>
+template <class D>
+auto StrideTwoFloatHorizontalSum(D d, const resample::Coefficients& plan, const resample::HorizontalBlock& block,
+                                 const float* source) {
+  const size_t lanes = hn::Lanes(d);
+  auto sum = hn::Zero(d);
+  int k = 0;
+  for (; block.taps - k >= 2; k += 2) {
+    hn::VFromD<D> a, b;
+    hn::LoadInterleaved2(d, source + block.source_start + k, a, b);
+    const float* weights = plan.horizontal.float_weights.data() + block.coefficient_start + size_t(k) * lanes;
+    sum = hn::Add(sum, hn::Mul(a, hn::LoadU(d, weights)));
+    sum = hn::Add(sum, hn::Mul(b, hn::LoadU(d, weights + lanes)));
+  }
+  if (k < block.taps) {
+    const float* src = source + block.source_start + k;
+    const auto lo = hn::LoadU(d, src), hi = hn::LoadU(d, src + lanes);
+    const auto weights =
+        hn::LoadU(d, plan.horizontal.float_weights.data() + block.coefficient_start + size_t(k) * lanes);
+    sum = hn::Add(sum, hn::Mul(hn::ConcatEven(d, hi, lo), weights));
+  }
+  return sum;
+}
+
+template <int stride>
 void HorizontalFloat(const resample::Coefficients& plan, vc_const_plane source, vc_plane destination, vc_rows rows,
                      int source_first, int destination_first) {
   const hn::ScalableTag<float> d;
@@ -655,9 +678,15 @@ void HorizontalFloat(const resample::Coefficients& plan, vc_const_plane source, 
     for (; x < end; x += lanes) {
       if (plan.horizontal.lanes == lanes) {
         const auto& block = plan.horizontal.blocks[x / lanes];
-        if constexpr (stride_four) {
+        if constexpr (stride == 4) {
           if (block.stride_four) {
             StoreOutput(d, StrideFourHorizontalSum(d, plan, block, src), dst + x, stream);
+            continue;
+          }
+        }
+        if constexpr (stride == 2) {
+          if (block.stride_two) {
+            StoreOutput(d, StrideTwoFloatHorizontalSum(d, plan, block, src), dst + x, stream);
             continue;
           }
         }
@@ -695,11 +724,13 @@ void HorizontalFloat(const resample::Coefficients& plan, vc_const_plane source, 
 void RunHorizontalFloat(const resample::Coefficients& plan, vc_const_plane source, vc_plane destination, vc_rows rows,
                         int source_first, int destination_first) {
   // Select once per call, keeping the short-filter loop free of the long
-  // stride-four path's branch and register pressure.
+  // direct-load paths' branches and register pressure.
   if (plan.horizontal.has_stride_four)
-    HorizontalFloat<true>(plan, source, destination, rows, source_first, destination_first);
+    HorizontalFloat<4>(plan, source, destination, rows, source_first, destination_first);
+  else if (plan.horizontal.has_stride_two_float)
+    HorizontalFloat<2>(plan, source, destination, rows, source_first, destination_first);
   else
-    HorizontalFloat<false>(plan, source, destination, rows, source_first, destination_first);
+    HorizontalFloat<0>(plan, source, destination, rows, source_first, destination_first);
 }
 size_t ResampleLanes() {
   return hn::Lanes(hn::ScalableTag<int32_t>());

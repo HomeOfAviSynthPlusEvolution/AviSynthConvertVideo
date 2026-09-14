@@ -391,6 +391,45 @@ TEST(ResampleHighwayContract, HorizontalStrideFourFloatAllTargetsExactBoundsAndO
     }
   }
 }
+TEST(ResampleHighwayContract, HorizontalStrideTwoFloatAllTargetsExactBoundsAndOrder) {
+  int64_t targets = ResampleSupportedTargets();
+  while (targets) {
+    const int64_t target = targets & -targets;
+    targets &= ~target;
+    SCOPED_TRACE(target);
+    const auto* table = GetResampleKernels(target);
+    ASSERT_NE(table, nullptr);
+    for (int taps : {8, 9, 15, 16, 17, 32, 33, 60, 61, 239}) {
+      const int width = int(3 * table->lanes), height = 3;
+      const int sw = 2 * (width - 1) + taps;
+      Coefficients plan{sw, width, 32, taps, taps, std::vector<int>(width), std::vector<int>(width, taps), {}, {}};
+      for (int x = 0; x < width; ++x) {
+        plan.offsets[x] = 2 * x;
+        for (int k = 0; k < taps; ++k)
+          plan.floats.push_back(float((x * 7 + k * 13) % 31 - 15) / 127);
+      }
+      PrepareHorizontal(plan, table->lanes);
+      ASSERT_TRUE(plan.horizontal.has_stride_two_float);
+      ASSERT_TRUE(plan.horizontal.blocks.front().stride_two);
+      // The last vector has only the active source samples, so it must not
+      // load the extra sample required by the sliding remainder.
+      ASSERT_FALSE(plan.horizontal.blocks.back().stride_two);
+      for (const auto& block : plan.horizontal.blocks)
+        if (block.stride_two)
+          ASSERT_LE(int64_t(block.source_start) + int64_t(2 * table->lanes) + taps - 1, sw);
+      std::vector<float> input(size_t(sw) * height), expected(size_t(width) * height, 19), actual(expected);
+      for (size_t i = 0; i < input.size(); ++i)
+        input[i] = std::ldexp(float(int(i % 509) - 254), int(i % 17) - 8);
+      const vc_const_plane src{input.data() + size_t(sw) * (height - 1), -ptrdiff_t(sw * sizeof(float))};
+      const vc_plane ref{expected.data() + size_t(width) * (height - 1), -ptrdiff_t(width * sizeof(float))};
+      const vc_plane dst{actual.data() + size_t(width) * (height - 1), -ptrdiff_t(width * sizeof(float))};
+      const vc_rows rows{width, height, 1, height - 1};
+      ASSERT_EQ(ExecuteC(plan, Axis::Horizontal, src, ref, rows), VC_OK);
+      table->horizontal_float(plan, src, dst, rows, 0, 0);
+      EXPECT_EQ(std::memcmp(actual.data(), expected.data(), actual.size() * sizeof(float)), 0) << "taps=" << taps;
+    }
+  }
+}
 TEST(ResampleHighwayContract, HorizontalFloatSlidingWindowsAndNonIntegralRatios) {
   const auto* table = EightLaneTable();
   if (!table)

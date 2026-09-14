@@ -50,9 +50,12 @@ void PrepareHorizontal(Coefficients& plan, size_t lanes) {
     packed.has_stride_four = packed.has_stride_four || stride_four;
     if (!window && !sliding && !stride_four)
       start = 0;
-    bool stride_two = sliding;
+    // Regular float pairs can share one deinterleave, even when the entire
+    // support fits a larger register window. Prove the odd tail's full load.
+    bool stride_two = linear && taps >= 8 && int64_t(start) + int64_t(2 * lanes) + taps - 1 <= plan.source_size;
     for (size_t i = 0; i < lanes; ++i)
       stride_two = stride_two && plan.offsets[first + i] - start == int(2 * i);
+    packed.has_stride_two_float = packed.has_stride_two_float || stride_two;
     if (plan.bits_per_sample != 32) {
       // At a two-sample stride, adjacent taps for all outputs form one
       // contiguous vector. Include the zero-weight mate of an odd last tap

@@ -49,6 +49,20 @@ void MatrixInteger(const matrix::Config& config, const matrix::Coefficients& m,
   const hn::Rebind<int32_t, decltype(d)> d32;
   const size_t lanes = hn::Lanes(d), width = size_t(rows.width);
   const auto zero = hn::Zero(d), ceiling = hn::Set(d, A(t.limit));
+  const auto multiply = [&](auto value, int weight) HWY_ATTR {
+#if HWY_ARCH_X86
+    if constexpr (sizeof(A) == 8) {
+      // Centered 8..16-bit samples and validated coefficients fit signed i32.
+      // On x86 each even i32 lane is the low half of its i64 sample. MulEven
+      // retains the full signed i64 product without an expensive i64 multiply.
+      const hn::Repartition<int32_t, decltype(d)> pairs;
+      return hn::MulEven(hn::BitCast(pairs, value), hn::Set(pairs, weight));
+    } else
+#endif
+    {
+      return hn::Mul(value, hn::Set(d, A(weight)));
+    }
+  };
   for (int y = rows.first_row; y < rows.first_row + rows.row_count; ++y) {
     const T* src[3] = {Row<T>(source[0], y), Row<T>(source[1], y), Row<T>(source[2], y)};
     T* dst[outputs];
@@ -66,9 +80,9 @@ void MatrixInteger(const matrix::Config& config, const matrix::Coefficients& m,
           VectorChannel(values_0, values_1, values_2, k) = hn::Add(loaded, hn::Set(d, A(t.input_offsets[k])));
       }
       for (int c = 0; c < outputs; ++c) {
-        auto sum = hn::Mul(values_0, hn::Set(d, A(t.weights[c][0])));
-        sum = hn::Add(sum, hn::Mul(values_1, hn::Set(d, A(t.weights[c][1]))));
-        sum = hn::Add(sum, hn::Mul(values_2, hn::Set(d, A(t.weights[c][2]))));
+        auto sum = multiply(values_0, t.weights[c][0]);
+        sum = hn::Add(sum, multiply(values_1, t.weights[c][1]));
+        sum = hn::Add(sum, multiply(values_2, t.weights[c][2]));
         sum = hn::Add(sum, hn::Set(d, A(t.biases[c])));
         const auto shifted = hn::ShiftRightSame(sum, config.precision);
         const auto value = hn::Min(hn::Max(hn::Add(shifted, hn::Set(d, A(t.output_offsets[c]))), zero), ceiling);

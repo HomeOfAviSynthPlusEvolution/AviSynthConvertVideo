@@ -340,6 +340,50 @@ TEST(MatrixRowsValidation, CustomCoefficientsNearWeightLimits) {
   }
 }
 
+TEST(MatrixTargets, FullWidthSignedProductsAndCancellation) {
+  const int high = std::numeric_limits<int32_t>::max();
+  for (const auto direction : {Direction::RgbToYuv, Direction::YuvToRgb}) {
+    const Config config{.2126, .0722, 16, 20, true, true, direction};
+    auto m = BuildCoefficients(config);
+    // Large products cancel to non-clipped results in some lanes. Others hit
+    // both clipping limits, including negative samples after centering.
+    m.y_b = high;
+    m.y_g = -high + 1;
+    m.y_r = 1 << 19;
+    m.u_b = std::numeric_limits<int32_t>::min();
+    m.u_g = high;
+    m.u_r = -(1 << 19);
+    m.v_b = -high;
+    m.v_g = high - 1;
+    m.v_r = 1 << 18;
+    ASSERT_FALSE(FitsInt32(MakeIntegerTransform(config, m), config.precision));
+    for (int width : {7, 8, 9, 15, 16, 17, 65}) {
+      std::array<std::vector<uint16_t>, 3> input, output;
+      const uint16_t samples[] = {0, 1, 32767, 32768, 65534, 65535};
+      for (int c = 0; c < 3; ++c) {
+        input[c].resize(width);
+        output[c].resize(width);
+        for (int x = 0; x < width; ++x)
+          input[c][x] = samples[(x + (x % 3 ? 0 : c)) % 6];
+      }
+      const ptrdiff_t stride = width * sizeof(uint16_t);
+      for (int64_t remaining = vc_matrix_supported_targets(); remaining; remaining &= remaining - 1) {
+        SCOPED_TRACE(::testing::Message() << "width=" << width << " target=" << (remaining & -remaining));
+        ASSERT_EQ(Execute(config, m,
+                          {{{input[0].data(), stride}, {input[1].data(), stride}, {input[2].data(), stride}}},
+                          {{{output[0].data(), stride}, {output[1].data(), stride}, {output[2].data(), stride}}},
+                          {width, 1, 0, 1}, GetMatrixKernel(remaining & -remaining, config, m)),
+                  VC_OK);
+        for (int x = 0; x < width; ++x) {
+          const auto expected = Expected(config, m, input[0][x], input[1][x], input[2][x]);
+          for (int c = 0; c < 3; ++c)
+            EXPECT_EQ(output[c][x], expected[c]);
+        }
+      }
+    }
+  }
+}
+
 template <class T>
 void CheckLuma(int depth) {
   for (int range = 0; range < 4; ++range)
@@ -408,12 +452,16 @@ TEST(MatrixPublic, UnclippedFloatReversePreservesExcursionsAndRejectsInteger) {
     ASSERT_EQ(vc_matrix_create_for_target(&config, target, &raw), VC_OK);
     std::unique_ptr<vc_matrix_plan, decltype(&vc_matrix_destroy)> plan(raw, vc_matrix_destroy);
     std::array<float, 133> y{}, uv{}, r{}, g{}, b{};
-    for (int i = 0; i < 133; ++i) y[i] = i % 2 ? 1.5f : -.5f;
+    for (int i = 0; i < 133; ++i)
+      y[i] = i % 2 ? 1.5f : -.5f;
     const ptrdiff_t pitch = sizeof(y);
     ASSERT_EQ(vc_matrix_yuv_to_rgb(plan.get(), {{y.data(), pitch}, {uv.data(), pitch}, {uv.data(), pitch}},
-      {{r.data(), pitch}, {g.data(), pitch}, {b.data(), pitch}, {}}, {133, 1, 0, 1}), VC_OK);
+                                   {{r.data(), pitch}, {g.data(), pitch}, {b.data(), pitch}, {}}, {133, 1, 0, 1}),
+              VC_OK);
     for (int i = 0; i < 133; ++i) {
-      EXPECT_FLOAT_EQ(r[i], y[i]); EXPECT_FLOAT_EQ(g[i], y[i]); EXPECT_FLOAT_EQ(b[i], y[i]);
+      EXPECT_FLOAT_EQ(r[i], y[i]);
+      EXPECT_FLOAT_EQ(g[i], y[i]);
+      EXPECT_FLOAT_EQ(b[i], y[i]);
     }
     config.bits_per_sample = 16;
     raw = nullptr;

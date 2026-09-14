@@ -1,6 +1,6 @@
 # Video conversion benchmark results
 
-Current performance comparisons: **522 full-filter cases**, **592 kernel rows**, and **108 supplementary long-support resampling rows** (54 profiles × two targets). The supplementary set overlaps the filter audit. The tables include refreshed AMD measurements for **Floyd and integer/F32 horizontal resampling, including uniform short integer supports and long regular pair loads, paired F32 loads, single-vector float windows, long integer sliding pairs and fixed short F32 supports, Ordered quantization and range mapping, and U8 integer matrix accumulation, U8 depth range mapping, direct packed RGB repacking and additional high-precision integer matrix coverage**. Unaffected paths retain their existing measurements. Missing upstream counterparts are explicitly marked, not counted as wins. Coverage is the measured workload set, not every possible parameter combination. Times are milliseconds.
+Current performance comparisons: **522 full-filter cases**, **592 kernel rows**, and **108 supplementary long-support resampling rows** (54 profiles × two targets). The supplementary set overlaps the filter audit. The tables include refreshed AMD measurements for **Floyd and integer/F32 horizontal resampling, including uniform short integer supports and long regular pair loads, paired F32 loads, single-vector float windows, long integer sliding pairs and fixed short F32 supports, Ordered quantization and range mapping, and U8 integer matrix accumulation, U8 depth range mapping, direct packed RGB repacking, YUY2 chroma neutralization and additional high-precision integer matrix coverage**. Unaffected paths retain their existing measurements. Missing upstream counterparts are explicitly marked, not counted as wins. Coverage is the measured workload set, not every possible parameter combination. Times are milliseconds.
 
 ## Reference and method
 
@@ -24,7 +24,7 @@ Current performance comparisons: **522 full-filter cases**, **592 kernel rows**,
 | depth | 132 | 1.141 | 0.379–1.506 | 0.994 | 0.334–1.204 |
 | depth-alpha | 13 | 1.067 | 0.976–3.307 | 1.028 | 0.904–2.917 |
 | floyd | 17 | 1.068 | 0.962–1.262 | 1.035 | 0.944–1.209 |
-| greyscale | 21 | 0.940 | 0.293–1.297 | 0.935 | 0.257–1.304 |
+| greyscale | 21 | 0.900 | 0.293–1.297 | 0.902 | 0.257–1.304 |
 | interlaced | 9 | 0.992 | 0.206–1.132 | 0.890 | 0.211–1.044 |
 | layout | 23 | 0.955 | 0.126–1.820 | 1.052 | 0.108–1.578 |
 | luma | 15 | 0.906 | 0.598–1.047 | 0.869 | 0.512–1.041 |
@@ -273,7 +273,7 @@ Expand each family. CPU cells are **upstream ms / new ms / ratio**; low-work rat
 
 | Case | Input | Size | Expression | AVX2: old / new / ratio | Native: old / new / ratio | Equal output | Observations AVX2 / native |
 |---|---|---|---|---|---|---|---|
-| greyscale-031 | YUY2 | 1920×1080 | `src.Greyscale()` | 0.1855 / 0.1729 / 0.932 | 0.1762 / 0.1760 / 0.998 | True / True | 1 / 1 |
+| greyscale-031 | YUY2 | 1920×1080 | `src.Greyscale()` | 0.1855 / 0.1612 / 0.869 | 0.1762 / 0.1579 / 0.896 | True / True | 3 / 3 |
 | greyscale-034 | YV16 | 1920×1080 | `src.Greyscale()` | 0.1144 / 0.1126 / 0.984 | 0.1202 / 0.1084 / 0.902 | True / True | 1 / 1 |
 | greyscale-036 | RGB24 | 1920×1080 | `src.Greyscale()` | 2.9452 / 0.8669 / 0.294 | 2.9049 / 0.8223 / 0.283 | True / True | 3 / 3 |
 | greyscale-038 | RGB32 | 1920×1080 | `src.Greyscale()` | 1.0374 / 1.0222 / 0.985 | 0.9629 / 0.9000 / 0.935 | True / True | 1 / 3 |
@@ -285,7 +285,7 @@ Expand each family. CPU cells are **upstream ms / new ms / ratio**; low-work rat
 | greyscale-050 | YV12 | 1920×1080 | `src.Greyscale()` | 0.0700 / 0.0713 / 1.019 | 0.0673 / 0.0689 / 1.023 | True / True | 1 / 1 |
 | greyscale-052 | YUV420P16 | 1920×1080 | `src.Greyscale()` | 0.1682 / 0.1605 / 0.954 | 0.1625 / 0.1749 / 1.076 | True / True | 1 / 1 |
 | greyscale-054 | YUV420PS | 1920×1080 | `src.Greyscale()` | 0.5696 / 0.5356 / 0.940 | 0.5553 / 0.5781 / 1.041 | True / True | 1 / 1 |
-| greyscale-468 | YUY2 | 3840×2160 | `src.Greyscale()` | 1.2583 / 1.2478 / 0.992 | 1.2363 / 1.2205 / 0.987 | True / True | 1 / 1 |
+| greyscale-468 | YUY2 | 3840×2160 | `src.Greyscale()` | 1.2583 / 1.1328 / 0.900 | 1.2363 / 1.1912 / 0.964 | True / True | 3 / 3 |
 | extra-029 | RGBP10 | 1920×1080 | `src.Greyscale()` | 1.7962 / 1.1236 / 0.626 | 1.9924 / 1.0291 / 0.517 | True / True | 1 / 1 |
 | extra-031 | RGBP12 | 1920×1080 | `src.Greyscale()` | 1.9275 / 1.2652 / 0.656 | 1.7628 / 1.0925 / 0.620 | True / True | 1 / 1 |
 | extra-033 | RGBP14 | 1920×1080 | `src.Greyscale()` | 1.7066 / 1.0629 / 0.623 | 1.7807 / 1.1423 / 0.642 | True / True | 1 / 1 |

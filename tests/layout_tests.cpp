@@ -369,7 +369,7 @@ TEST(LayoutBounds, NativePackedTailsUseExactAllocations) {
 } // namespace
 
 namespace {
-std::vector<int64_t> RepackTargets() {
+std::vector<int64_t> LayoutTargets() {
   std::vector<int64_t> result{VC_TARGET_C};
   for (int64_t mask = vc_layout_supported_targets(); mask; mask &= mask - 1)
     result.push_back(mask & -mask);
@@ -377,7 +377,7 @@ std::vector<int64_t> RepackTargets() {
 }
 template <class T>
 void CheckRepack() {
-  for (int64_t target : RepackTargets())
+  for (int64_t target : LayoutTargets())
     for (int sc : {3, 4})
       for (int dc : {3, 4})
         for (int width : {1, 7, 16, 17, 31, 32, 33, 63, 64, 65, 127, 128, 129})
@@ -441,7 +441,7 @@ TEST(LayoutRepack, ExactAllocationBoundaries) {
   CheckExactRepack<uint16_t>();
 }
 TEST(Yuy2Luma, BandsStridesAndSourcePreservation) {
-  for (int64_t target : {VC_TARGET_C, VC_TARGET_NATIVE}) {
+  for (int64_t target : LayoutTargets()) {
     const auto* f = vc_get_layout_functions(target);
     ASSERT_NE(f, nullptr);
     for (int width : {2, 6, 14, 16, 18, 30, 32, 34, 62, 64, 66, 130})
@@ -472,7 +472,7 @@ TEST(Yuy2Luma, BandsStridesAndSourcePreservation) {
   }
 }
 TEST(Yuy2Luma, InvalidArgumentsDoNotWriteAndEmptyBandsDoNotAccessBuffers) {
-  for (int64_t target : {VC_TARGET_C, VC_TARGET_NATIVE}) {
+  for (int64_t target : LayoutTargets()) {
     const auto* f = vc_get_layout_functions(target);
     std::array<uint8_t, 16> source{}, destination{};
     source.fill(73);
@@ -493,7 +493,7 @@ TEST(Yuy2Luma, InvalidArgumentsDoNotWriteAndEmptyBandsDoNotAccessBuffers) {
   }
 }
 TEST(Yuy2Luma, ExactAllocationBoundaries) {
-  for (int64_t target : {VC_TARGET_C, VC_TARGET_NATIVE}) {
+  for (int64_t target : LayoutTargets()) {
     const auto* f = vc_get_layout_functions(target);
     for (int w : {2, 6, 14, 16, 18, 30, 32, 34, 62, 64, 66, 130}) {
       std::vector<uint8_t> source(w * 2, 99), luma(w, 0);

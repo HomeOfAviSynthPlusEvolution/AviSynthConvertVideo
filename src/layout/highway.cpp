@@ -277,12 +277,17 @@ int Luma(vc_const_plane source, vc_plane destination, vc_rows rows) {
     auto* dst = Row<uint8_t>(destination, y);
     size_t x = 0;
     for (; x < end; x += lanes) {
-      hn::Vec<decltype(d)> luma, chroma;
-      hn::LoadInterleaved2(d, src + 2 * x, luma, chroma);
-      if constexpr (Neutralize)
-        hn::StoreInterleaved2(luma, hn::Set(d, uint8_t{128}), d, dst + 2 * x);
-      else
+      if constexpr (Neutralize) {
+        const auto keep = hn::OddEven(hn::Zero(d), hn::Set(d, uint8_t{255}));
+        const auto fill = hn::OddEven(hn::Set(d, uint8_t{128}), hn::Zero(d));
+        const auto a = hn::LoadU(d, src + 2 * x), b = hn::LoadU(d, src + 2 * x + lanes);
+        hn::StoreU(hn::Or(hn::And(a, keep), fill), d, dst + 2 * x);
+        hn::StoreU(hn::Or(hn::And(b, keep), fill), d, dst + 2 * x + lanes);
+      } else {
+        hn::Vec<decltype(d)> luma, chroma;
+        hn::LoadInterleaved2(d, src + 2 * x, luma, chroma);
         hn::StoreU(luma, d, dst + x);
+      }
     }
     for (; x < size_t(rows.width); ++x) {
       if constexpr (Neutralize)

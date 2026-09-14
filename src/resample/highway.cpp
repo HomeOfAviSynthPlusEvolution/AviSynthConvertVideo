@@ -360,6 +360,24 @@ auto PairedHorizontalSum(D d, const resample::Coefficients& plan, const resample
   return hn::Add(hn::RearrangeToOddPlusEven(sum, odd), hn::Set(d, 1 << (shift - 1)));
 }
 
+template <class T, class D>
+auto SingleSlidingIntegerHorizontalSum(D d, const resample::Coefficients& plan, const resample::HorizontalBlock& block,
+                                       const T* source, int bias) {
+  const hn::Repartition<int16_t, D> d16;
+  const size_t lanes16 = hn::Lanes(d16);
+  const auto lookup = hn::IndicesFromVec(d16, hn::LoadU(d16, plan.horizontal.pair_indices.data() + block.pair_start));
+  auto sum = hn::Zero(d), odd = hn::Zero(d);
+  for (int k = 0; k < block.taps; k += 2) {
+    const auto values = LoadSigned16(d16, source + block.source_start + k, bias);
+    const auto samples = hn::TableLookupLanes(values, lookup);
+    const auto weights =
+        hn::LoadU(d16, plan.horizontal.pair_weights.data() + block.pair_start + size_t(k / 2) * lanes16);
+    sum = hn::ReorderWidenMulAccumulate(d, samples, weights, sum, odd);
+  }
+  constexpr int shift = sizeof(T) == 1 ? 14 : 13;
+  return hn::Add(hn::RearrangeToOddPlusEven(sum, odd), hn::Set(d, 1 << (shift - 1)));
+}
+
 template <bool long_pairs = false, class T, class D>
 auto PackedHorizontalSum(D d, const resample::Coefficients& plan, const resample::HorizontalBlock& block,
                          const T* source, int bias) {
@@ -468,7 +486,7 @@ void HorizontalLongInteger(D d, const resample::Coefficients& plan, const T* sou
   }
 }
 
-template <class T, int pairs = 0, bool long_pairs = false>
+template <class T, int pairs = 0, bool long_pairs = false, bool sliding = false>
 void HorizontalInteger(const resample::Coefficients& plan, vc_const_plane source, vc_plane destination, vc_rows rows,
                        int source_first, int destination_first) {
   const hn::ScalableTag<int32_t> d;
@@ -539,6 +557,15 @@ void HorizontalInteger(const resample::Coefficients& plan, vc_const_plane source
         continue;
       }
       if (plan.horizontal.lanes == lanes) {
+        if constexpr (sliding) {
+          if (plan.horizontal.blocks[x / lanes].single_sliding) {
+            auto sum = SingleSlidingIntegerHorizontalSum(d, plan, plan.horizontal.blocks[x / lanes], src, bias);
+            sum = hn::ShiftRight<shift>(hn::Add(sum, hn::Set(d, bias << shift)));
+            sum = LimitEffectiveBits<T>(d, sum, plan.bits_per_sample);
+            hn::StoreU(hn::DemoteTo(ds, sum), ds, dst + x);
+            continue;
+          }
+        }
         if (!plan.horizontal.blocks[x / lanes].window_size &&
             !(long_pairs && plan.horizontal.blocks[x / lanes].stride_two)) {
           HorizontalLongInteger(d, plan, src, dst, x, lanes, bias);
@@ -582,6 +609,11 @@ template <class T>
 void SelectHorizontalInteger(const resample::Coefficients& plan, vc_const_plane source, vc_plane destination,
                              vc_rows rows, int source_first, int destination_first) {
   const hn::ScalableTag<int32_t> d;
+#if HWY_TARGET != HWY_SSE2
+  // SSE2 emulates the word lookup and is slower than the existing tap reduction.
+  if (plan.horizontal.lanes == hn::Lanes(d) && plan.horizontal.has_single_sliding)
+    return HorizontalInteger<T, 0, false, true>(plan, source, destination, rows, source_first, destination_first);
+#endif
   // Keep long-pair dispatch out of the existing short and nonregular loops.
   if (plan.horizontal.lanes == hn::Lanes(d) && plan.horizontal.has_long_stride_two)
     return HorizontalInteger<T, 0, true>(plan, source, destination, rows, source_first, destination_first);

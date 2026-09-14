@@ -295,6 +295,65 @@ TEST(ResampleHighwayContract, HorizontalLongStrideTwoPairsAllTargetsExactBounds)
   }
 }
 template <class T>
+void CheckSingleSlidingInteger(int bits, const ResampleKernels& table) {
+  const int lanes = int(table.lanes), height = 3;
+  bool sliding = false, fallback = false;
+  for (int taps : {4 * lanes + 1, 60, 61, 239})
+    for (int tail : {0, 1}) {
+      const int width = 5 * lanes + tail, sw = 2 * (width - 1) / 3 + taps;
+      Coefficients plan{sw, width, bits, taps, taps, std::vector<int>(width), std::vector<int>(width, taps), {}, {}};
+      const int unit = 1 << (sizeof(T) == 1 ? 14 : 13);
+      for (int x = 0; x < width; ++x) {
+        plan.offsets[x] = 2 * x / 3;
+        int total = 0;
+        for (int k = 0; k < taps; ++k) {
+          const int weight = k + 1 == taps ? unit - total : (k % 2 ? -73 : 91);
+          plan.integers.push_back(int16_t(weight));
+          total += weight;
+        }
+      }
+      plan.max_abs_sum = unit + taps * 146;
+      PrepareHorizontal(plan, table.lanes);
+      for (const auto& block : plan.horizontal.blocks) {
+        fallback = fallback || !block.single_sliding;
+        if (!block.single_sliding)
+          continue;
+        sliding = true;
+        ASSERT_TRUE(plan.horizontal.has_single_sliding);
+        ASSERT_EQ(block.window_size, 0);
+        ASSERT_LE(int64_t(block.source_start) + 2 * lanes + ((taps + 1) / 2) * 2 - 2, sw);
+      }
+      std::vector<T> input(size_t(sw) * height), expected(size_t(width) * height, T(19)), actual(expected);
+      for (size_t i = 0; i < input.size(); ++i)
+        input[i] = T((i * 9829) & ((1 << bits) - 1));
+      const vc_const_plane src{input.data() + size_t(sw) * (height - 1), -ptrdiff_t(sw * sizeof(T))};
+      const vc_plane ref{expected.data() + size_t(width) * (height - 1), -ptrdiff_t(width * sizeof(T))};
+      const vc_plane dst{actual.data() + size_t(width) * (height - 1), -ptrdiff_t(width * sizeof(T))};
+      const vc_rows rows{width, height, 1, height - 1};
+      ASSERT_EQ(ExecuteC(plan, Axis::Horizontal, src, ref, rows), VC_OK);
+      table.horizontal_integer(plan, src, dst, rows, 0, 0);
+      ASSERT_EQ(actual, expected) << "bits=" << bits << " taps=" << taps;
+      plan.max_abs_sum = -1;
+      std::fill(actual.begin(), actual.end(), T(19));
+      table.horizontal_integer(plan, src, dst, rows, 0, 0);
+      ASSERT_EQ(actual, expected);
+    }
+  EXPECT_TRUE(sliding && fallback);
+}
+TEST(ResampleHighwayContract, HorizontalSingleSlidingIntegerAllTargetsExactBounds) {
+  int64_t targets = ResampleSupportedTargets();
+  while (targets) {
+    const int64_t target = targets & -targets;
+    targets &= ~target;
+    SCOPED_TRACE(target);
+    const auto* table = GetResampleKernels(target);
+    ASSERT_NE(table, nullptr);
+    CheckSingleSlidingInteger<uint8_t>(8, *table);
+    CheckSingleSlidingInteger<uint16_t>(10, *table);
+    CheckSingleSlidingInteger<uint16_t>(16, *table);
+  }
+}
+template <class T>
 void CheckSingleWindowPairs(int bits, const ResampleKernels& table) {
   const int lanes = int(table.lanes), sw = 2 * lanes + 9, width = 3 * lanes + 1, height = 4;
   for (int taps = 1; taps <= std::min(9, 2 * lanes); ++taps) {

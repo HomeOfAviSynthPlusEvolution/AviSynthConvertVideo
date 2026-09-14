@@ -78,6 +78,19 @@ void PrepareHorizontal(Coefficients& plan, size_t lanes) {
     for (size_t i = 0; i < lanes; ++i)
       single_sliding = single_sliding && plan.offsets[first + i] >= first_offset &&
                        plan.offsets[first + i] - first_offset < int(lanes);
+    // Long integer supports can slide one vector of adjacent sample pairs.
+    // Only the first pair's indices are needed; the final full load includes
+    // the zero-weight mate of an odd tap and must remain inside the row.
+    if (plan.bits_per_sample != 32 && !window && !stride_two) {
+      single_sliding =
+          taps >= 8 && 4 * lanes <= size_t(std::numeric_limits<int16_t>::max()) &&
+          int64_t(first_offset) + int64_t(2 * lanes) + ((int64_t(taps) + 1) / 2) * 2 - 2 <= plan.source_size;
+      for (size_t i = 0; i < lanes; ++i)
+        single_sliding = single_sliding && plan.sizes[first + i] == taps && plan.offsets[first + i] >= first_offset &&
+                         plan.offsets[first + i] - first_offset + 1 < int(2 * lanes);
+      if (single_sliding)
+        start = first_offset;
+    }
     packed.has_single_sliding = packed.has_single_sliding || single_sliding;
     packed.blocks.push_back({start, window, taps, packed.indices.size(), packed.pair_indices.size(), linear, sliding,
                              stride_two, stride_four, single_sliding});
@@ -91,7 +104,7 @@ void PrepareHorizontal(Coefficients& plan, size_t lanes) {
         else
           packed.integer_weights.push_back(plan.integers[index]);
       }
-    if (plan.bits_per_sample != 32 && (window || stride_two) &&
+    if (plan.bits_per_sample != 32 && (window || stride_two || single_sliding) &&
         4 * lanes <= size_t(std::numeric_limits<int16_t>::max())) {
       for (int k = 0; k < taps; k += 2)
         for (size_t i = 0; i < lanes; ++i)
@@ -99,7 +112,9 @@ void PrepareHorizontal(Coefficients& plan, size_t lanes) {
             const size_t position = first + i;
             // Direct pair loads need no indices; long supports need not fit i16.
             packed.pair_indices.push_back(
-                stride_two ? 0 : int16_t(plan.offsets[position] + std::min(k + j, plan.sizes[position] - 1) - start));
+                stride_two || (single_sliding && k > 0)
+                    ? 0
+                    : int16_t(plan.offsets[position] + std::min(k + j, plan.sizes[position] - 1) - start));
             packed.pair_weights.push_back(
                 k + j < plan.sizes[position] ? plan.integers[position * plan.filter_size + k + j] : 0);
           }
@@ -121,6 +136,11 @@ void PrepareHorizontal(Coefficients& plan, size_t lanes) {
       packed.dot_outputs = x + 4;
     }
   }
+  // Keep the existing regular-pair and short-dot kernels in their own loops.
+  if (plan.bits_per_sample != 32 &&
+      (packed.dot_outputs || std::any_of(packed.blocks.begin(), packed.blocks.end(),
+                                         [](const HorizontalBlock& block) { return block.stride_two; })))
+    packed.has_single_sliding = false;
   // A uniform short support needs no per-block window or tap-loop dispatch.
   // Pair packing already bounds every lookup, including zero-weight edge mates.
   const int pairs = plan.filter_size / 2 + plan.filter_size % 2;

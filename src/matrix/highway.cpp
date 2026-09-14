@@ -86,9 +86,16 @@ void MatrixInteger(const matrix::Config& config, const matrix::Coefficients& m,
         sum = hn::Add(sum, hn::Set(d, A(t.biases[c])));
         const auto shifted = hn::ShiftRightSame(sum, config.precision);
         const auto value = hn::Min(hn::Max(hn::Add(shifted, hn::Set(d, A(t.output_offsets[c]))), zero), ceiling);
-        if constexpr (sizeof(A) == 8)
+        if constexpr (sizeof(A) == 8) {
+#if HWY_ARCH_X86
+          // The value is already within the unsigned output range. Direct
+          // truncation avoids two redundant saturating narrowing stages.
+          const hn::RebindToUnsigned<decltype(d)> du;
+          hn::StoreU(hn::TruncateTo(ds, hn::BitCast(du, value)), ds, dst[c] + x);
+#else
           hn::StoreU(hn::DemoteTo(ds, hn::DemoteTo(d32, value)), ds, dst[c] + x);
-        else
+#endif
+        } else
           hn::StoreU(hn::DemoteTo(ds, value), ds, dst[c] + x);
       }
     }

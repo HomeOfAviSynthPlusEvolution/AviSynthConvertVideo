@@ -340,10 +340,11 @@ TEST(MatrixRowsValidation, CustomCoefficientsNearWeightLimits) {
   }
 }
 
-TEST(MatrixTargets, FullWidthSignedProductsAndCancellation) {
+template <class T>
+void CheckWideProducts(int bits) {
   const int high = std::numeric_limits<int32_t>::max();
   for (const auto direction : {Direction::RgbToYuv, Direction::YuvToRgb}) {
-    const Config config{.2126, .0722, 16, 20, true, true, direction};
+    const Config config{.2126, .0722, bits, 20, true, true, direction};
     auto m = BuildCoefficients(config);
     // Large products cancel to non-clipped results in some lanes. Others hit
     // both clipping limits, including negative samples after centering.
@@ -358,15 +359,16 @@ TEST(MatrixTargets, FullWidthSignedProductsAndCancellation) {
     m.v_r = 1 << 18;
     ASSERT_FALSE(FitsInt32(MakeIntegerTransform(config, m), config.precision));
     for (int width : {7, 8, 9, 15, 16, 17, 65}) {
-      std::array<std::vector<uint16_t>, 3> input, output;
-      const uint16_t samples[] = {0, 1, 32767, 32768, 65534, 65535};
+      std::array<std::vector<T>, 3> input, output;
+      const int center = 1 << (bits - 1), limit = (1 << bits) - 1;
+      const T samples[] = {0, 1, T(center - 1), T(center), T(limit - 1), T(limit)};
       for (int c = 0; c < 3; ++c) {
         input[c].resize(width);
         output[c].resize(width);
         for (int x = 0; x < width; ++x)
           input[c][x] = samples[(x + (x % 3 ? 0 : c)) % 6];
       }
-      const ptrdiff_t stride = width * sizeof(uint16_t);
+      const ptrdiff_t stride = width * sizeof(T);
       for (int64_t remaining = vc_matrix_supported_targets(); remaining; remaining &= remaining - 1) {
         SCOPED_TRACE(::testing::Message() << "width=" << width << " target=" << (remaining & -remaining));
         ASSERT_EQ(Execute(config, m,
@@ -382,6 +384,10 @@ TEST(MatrixTargets, FullWidthSignedProductsAndCancellation) {
       }
     }
   }
+}
+TEST(MatrixTargets, FullWidthSignedProductsAndCancellation) {
+  CheckWideProducts<uint8_t>(8);
+  CheckWideProducts<uint16_t>(16);
 }
 
 template <class T>

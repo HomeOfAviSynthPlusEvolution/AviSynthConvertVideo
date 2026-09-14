@@ -276,6 +276,43 @@ void MatrixFloat(const matrix::Config& config, const matrix::Coefficients& m,
     for (int c = 0; c < outputs; ++c)
       dst[c] = Row<float>(destination[c], y);
     size_t x = 0;
+#if HWY_TARGET == HWY_AVX3_SPR
+    if constexpr (outputs == 3) {
+      // On SPR, split stores dominate when the planes share an unaligned
+      // start. A bounded first vector aligns the remaining output stores.
+      const size_t bytes = lanes * sizeof(float);
+      const size_t phase = reinterpret_cast<uintptr_t>(dst[0]) % bytes;
+      if (width >= lanes && phase && reinterpret_cast<uintptr_t>(dst[1]) % bytes == phase &&
+          reinterpret_cast<uintptr_t>(dst[2]) % bytes == phase) {
+        x = (bytes - phase) / sizeof(float);
+        auto a = hn::LoadU(d, src[0]);
+        auto b = hn::LoadU(d, src[1]);
+        auto r = hn::LoadU(d, src[2]);
+        if constexpr (forward) {
+          if (m.offset_rgb_f != 0) {
+            const auto offset = hn::Set(d, m.offset_rgb_f);
+            a = hn::Add(a, offset);
+            b = hn::Add(b, offset);
+            r = hn::Add(r, offset);
+          }
+        } else {
+          a = hn::Add(a, hn::Set(d, m.offset_y_f));
+        }
+        for (int c = 0; c < outputs; ++c) {
+          // Deliberately separate multiplication/addition, matching C rounding.
+          auto sum = hn::Add(hn::Mul(hn::Set(d, weights[c][0]), a), hn::Mul(hn::Set(d, weights[c][1]), b));
+          sum = hn::Add(sum, hn::Mul(hn::Set(d, weights[c][2]), r));
+          sum = hn::Add(sum, hn::Set(d, forward ? (c == 0 ? m.offset_y_f : 0.f) : m.offset_rgb_f));
+          const auto lo = hn::Set(d, forward && c > 0 ? -.5f : 0.f);
+          const auto hi = hn::Set(d, forward && c > 0 ? .5f : 1.f);
+          if (outputs == 1 || config.preserve_float_range)
+            hn::StoreN(sum, d, dst[c], x);
+          else
+            hn::StoreN(hn::Min(hn::Max(sum, lo), hi), d, dst[c], x);
+        }
+      }
+    }
+#endif
     for (; x + lanes <= width; x += lanes) {
       auto a = hn::LoadU(d, src[0] + x);
       auto b = hn::LoadU(d, src[1] + x);

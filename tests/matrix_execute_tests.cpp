@@ -237,6 +237,49 @@ TEST(MatrixRowsValidation, ExactAllocationsAroundVectorBoundaries) {
   ExactAllocation<uint16_t>(16);
   ExactAllocation<float>(32);
 }
+TEST(MatrixRowsValidation, FloatSharedAndDistinctOutputAlignment) {
+  constexpr int height = 3, pitch = 96;
+  struct alignas(64) Storage {
+    std::array<float, pitch * height + 32> values;
+  };
+  for (int width : {1, 15, 16, 17, 31, 32, 33, 65})
+    for (auto direction : {Direction::RgbToYuv, Direction::YuvToRgb})
+      for (bool preserve : {false, true})
+        for (int offset : {1, 15})
+          for (bool distinct : {false, true})
+            for (bool negative : {false, true}) {
+              const Config config{.2126, .0722, 32, 15, false, false, direction, preserve};
+              const auto m = BuildCoefficients(config);
+              std::array<std::vector<float>, 3> input;
+              std::array<Storage, 3> expected, actual;
+              std::array<vc_const_plane, 3> source;
+              std::array<vc_plane, 3> destination, reference;
+              for (int c = 0; c < 3; ++c) {
+                input[c].resize(width * height);
+                for (int x = 0; x < width * height; ++x)
+                  input[c][x] = float((x * 37 + c * 101) % 383 - 128) / 128.f;
+                source[c] = {input[c].data(), ptrdiff_t(width * sizeof(float))};
+                expected[c].values.fill(77.f);
+                const int start = offset + (distinct ? c : 0) + (negative ? (height - 1) * pitch : 0);
+                const ptrdiff_t stride = (negative ? -pitch : pitch) * ptrdiff_t(sizeof(float));
+                reference[c] = {expected[c].values.data() + start, stride};
+                destination[c] = {actual[c].values.data() + start, stride};
+              }
+              ASSERT_EQ(ExecuteC(config, m, source, reference, {width, height, 1, 2}), VC_OK);
+              for (int64_t remaining = vc_matrix_supported_targets(); remaining; remaining &= remaining - 1) {
+                const int64_t target = remaining & -remaining;
+                SCOPED_TRACE(::testing::Message()
+                             << width << ", " << offset << ", " << distinct << ", " << negative << ", " << target);
+                for (auto& plane : actual)
+                  plane.values.fill(77.f);
+                ASSERT_EQ(
+                    Execute(config, m, source, destination, {width, height, 1, 2}, GetMatrixKernel(target, config, m)),
+                    VC_OK);
+                for (int c = 0; c < 3; ++c)
+                  EXPECT_EQ(actual[c].values, expected[c].values);
+              }
+            }
+}
 TEST(MatrixPlanValidation, InvalidCreationAndNullPlans) {
   const vc_matrix_config base{.299, .114, 8, 15, 1, 0, VC_RGB_TO_YUV};
   EXPECT_EQ(vc_matrix_create(&base, nullptr), VC_INVALID_ARGUMENT);

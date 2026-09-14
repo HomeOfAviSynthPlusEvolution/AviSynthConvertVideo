@@ -150,6 +150,35 @@ void PrepareHorizontal(Coefficients& plan, size_t lanes) {
         return block.window_size == int(2 * lanes) && !block.stride_two && block.taps / 2 + block.taps % 2 == pairs;
       }))
     packed.single_window_pairs = pairs;
+  // Common short float supports can fit all source samples in one vector.
+  // Prove every block before changing its window so the fixed-tap entry owns
+  // the entire plan; other entries keep their original two/four-vector layout.
+  const int float_taps = plan.filter_size;
+  if (plan.bits_per_sample == 32 && (float_taps == 2 || float_taps == 6) && plan.source_size >= int(lanes) &&
+      !packed.blocks.empty()) {
+    bool single = true;
+    for (size_t block = 0; block < blocks; ++block) {
+      int first = plan.source_size, last = 0;
+      for (size_t i = 0; i < lanes; ++i) {
+        const size_t x = block * lanes + i;
+        first = std::min(first, plan.offsets[x]);
+        last = std::max(last, plan.offsets[x] + plan.sizes[x]);
+      }
+      single = single && last - first <= int(lanes) && packed.blocks[block].taps == float_taps;
+    }
+    if (single) {
+      for (size_t block = 0; block < blocks; ++block) {
+        auto& entry = packed.blocks[block];
+        const auto begin = plan.offsets.begin() + block * lanes;
+        const int start = std::min(*std::min_element(begin, begin + lanes), plan.source_size - int(lanes));
+        for (size_t i = 0; i < size_t(float_taps) * lanes; ++i)
+          packed.indices[entry.coefficient_start + i] += entry.source_start - start;
+        entry.source_start = start;
+        entry.window_size = int(lanes);
+      }
+      packed.single_window_float_taps = float_taps;
+    }
+  }
   plan.horizontal = std::move(packed);
 }
 } // namespace vc::resample

@@ -710,7 +710,24 @@ auto SingleSlidingFloatHorizontalSum(D d, const resample::Coefficients& plan, co
   return sum;
 }
 
-template <int stride>
+template <int taps, bool linear, class D>
+auto SingleWindowFloatHorizontalSum(D d, const resample::Coefficients& plan, const resample::HorizontalBlock& block,
+                                    const float* source) {
+  const hn::Rebind<int32_t, D> di;
+  const size_t lanes = hn::Lanes(d);
+  const auto values = hn::LoadU(d, source + block.source_start);
+  const auto first = hn::LoadU(di, plan.horizontal.indices.data() + block.coefficient_start);
+  auto sum = hn::Zero(d);
+  for (int k = 0; k < taps; ++k) {
+    const size_t offset = block.coefficient_start + size_t(k) * lanes;
+    const auto index = linear ? hn::Add(first, hn::Set(di, k)) : hn::LoadU(di, plan.horizontal.indices.data() + offset);
+    const auto samples = hn::TableLookupLanes(values, hn::IndicesFromVec(d, index));
+    sum = hn::Add(sum, hn::Mul(samples, hn::LoadU(d, plan.horizontal.float_weights.data() + offset)));
+  }
+  return sum;
+}
+
+template <int stride, int fixed_taps = 0>
 void HorizontalFloat(const resample::Coefficients& plan, vc_const_plane source, vc_plane destination, vc_rows rows,
                      int source_first, int destination_first) {
   const hn::ScalableTag<float> d;
@@ -728,6 +745,13 @@ void HorizontalFloat(const resample::Coefficients& plan, vc_const_plane source, 
     for (; x < end; x += lanes) {
       if (plan.horizontal.lanes == lanes) {
         const auto& block = plan.horizontal.blocks[x / lanes];
+        if constexpr (fixed_taps != 0) {
+          const auto sum = block.linear_indices
+                               ? SingleWindowFloatHorizontalSum<fixed_taps, true>(d, plan, block, src)
+                               : SingleWindowFloatHorizontalSum<fixed_taps, false>(d, plan, block, src);
+          StoreOutput(d, sum, dst + x, stream);
+          continue;
+        }
         if constexpr (stride == 4) {
           if (block.stride_four) {
             StoreOutput(d, StrideFourHorizontalSum(d, plan, block, src), dst + x, stream);
@@ -779,6 +803,15 @@ void HorizontalFloat(const resample::Coefficients& plan, vc_const_plane source, 
 }
 void RunHorizontalFloat(const resample::Coefficients& plan, vc_const_plane source, vc_plane destination, vc_rows rows,
                         int source_first, int destination_first) {
+  const hn::ScalableTag<float> d;
+  if (plan.horizontal.lanes == hn::Lanes(d)) {
+    switch (plan.horizontal.single_window_float_taps) {
+      case 2:
+        return HorizontalFloat<0, 2>(plan, source, destination, rows, source_first, destination_first);
+      case 6:
+        return HorizontalFloat<0, 6>(plan, source, destination, rows, source_first, destination_first);
+    }
+  }
   // Select once per call, keeping the short-filter loop free of the long
   // direct-load paths' branches and register pressure.
   if (plan.horizontal.has_stride_four)

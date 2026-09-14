@@ -35,6 +35,7 @@ struct HorizontalPacking {
   bool has_single_sliding = false;
   int single_window_pairs = 0;
   int dot_outputs = 0;
+  int single_window_float_taps = 0;
   std::vector<int16_t> dot_weights;
   std::vector<HorizontalBlock> blocks;
   std::vector<int32_t> indices, integer_weights;

@@ -536,6 +536,60 @@ TEST(ResampleHighwayContract, HorizontalSingleSlidingFloatAllTargetsExactBoundsA
     EXPECT_TRUE(single && shifted && narrow_end && fallback);
   }
 }
+TEST(ResampleHighwayContract, HorizontalSingleWindowFloatAllTargetsExactBoundsAndOrder) {
+  int64_t targets = ResampleSupportedTargets();
+  while (targets) {
+    const int64_t target = targets & -targets;
+    targets &= ~target;
+    SCOPED_TRACE(target);
+    const auto* table = GetResampleKernels(target);
+    ASSERT_NE(table, nullptr);
+    const int lanes = int(table->lanes), height = 3;
+    for (int taps : {2, 6}) {
+      if (taps + (lanes - 1) / 4 > lanes)
+        continue;
+      for (int tail : {0, 1}) {
+        const int width = 3 * lanes + tail, sw = lanes + (width - 1) / 4 + taps;
+        Coefficients plan{sw, width, 32, taps, taps, std::vector<int>(width), std::vector<int>(width, taps), {}, {}};
+        for (int x = 0; x < width; ++x) {
+          plan.offsets[x] = lanes + x / 4;
+          if (x == 0 && taps > 1)
+            plan.sizes[x] = taps - 1;
+          for (int k = 0; k < taps; ++k)
+            plan.floats.push_back(k < plan.sizes[x] ? float((x * 7 + k * 13) % 31 - 15) / 127 : 0);
+        }
+        PrepareHorizontal(plan, table->lanes);
+        ASSERT_EQ(plan.horizontal.single_window_float_taps, taps);
+        for (const auto& block : plan.horizontal.blocks) {
+          ASSERT_EQ(block.window_size, lanes);
+          ASSERT_LE(block.source_start + lanes, sw);
+          for (int k = 0; k < taps * lanes; ++k) {
+            ASSERT_GE(plan.horizontal.indices[block.coefficient_start + k], 0);
+            ASSERT_LT(plan.horizontal.indices[block.coefficient_start + k], lanes);
+          }
+        }
+        std::vector<float> input(size_t(sw) * height), expected(size_t(width) * height, 19), actual(expected);
+        for (size_t i = 0; i < input.size(); ++i)
+          input[i] = std::ldexp(float(int(i % 509) - 254), int(i % 17) - 8);
+        const vc_const_plane src{input.data() + size_t(sw) * (height - 1), -ptrdiff_t(sw * sizeof(float))};
+        const vc_plane ref{expected.data() + size_t(width) * (height - 1), -ptrdiff_t(width * sizeof(float))};
+        const vc_plane dst{actual.data() + size_t(width) * (height - 1), -ptrdiff_t(width * sizeof(float))};
+        const vc_rows rows{width, height, 1, height - 1};
+        ASSERT_EQ(ExecuteC(plan, Axis::Horizontal, src, ref, rows), VC_OK);
+        table->horizontal_float(plan, src, dst, rows, 0, 0);
+        EXPECT_EQ(std::memcmp(actual.data(), expected.data(), actual.size() * sizeof(float)), 0);
+        // A plan prepared for a different width must use mathematical offsets,
+        // not interpret the single-vector packing at the executing width.
+        if (lanes > 4) {
+          PrepareHorizontal(plan, table->lanes / 2);
+          std::fill(actual.begin(), actual.end(), 19);
+          table->horizontal_float(plan, src, dst, rows, 0, 0);
+          EXPECT_EQ(std::memcmp(actual.data(), expected.data(), actual.size() * sizeof(float)), 0);
+        }
+      }
+    }
+  }
+}
 TEST(ResampleHighwayContract, HorizontalFloatSlidingWindowsAndNonIntegralRatios) {
   const auto* table = EightLaneTable();
   if (!table)

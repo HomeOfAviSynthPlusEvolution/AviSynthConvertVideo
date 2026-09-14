@@ -45,6 +45,7 @@ struct vc_floyd_context {
   int width, height, next_row = 0, next_error = 0;
   std::vector<int> errors;
   std::array<uint8_t, 256> range_u8{};
+  std::vector<uint16_t> range_row;
 };
 namespace {
 int FloorShift(int value, int shift) {
@@ -69,14 +70,30 @@ void Execute(vc_floyd_context& p, vc_const_plane source, vc_plane destination, v
   for (int y = rows.first_row; y < rows.first_row + rows.row_count; ++y) {
     const auto* src = vc::Row<S>(source, y);
     auto* dst = vc::Row<D>(destination, y);
+    if constexpr (sizeof(S) == 2 && low) {
+      if (c.source_full != c.destination_full) {
+        // Low-bit backscaling already uses float in the serial loop. Moving
+        // range conversion to a vectorizable pass shortens that dependency.
+        // Ordinary quantization keeps inline conversion: SPR flat/gradient
+        // measurements regress with the extra pass. Scratch is only one row.
+        auto* mapped = p.range_row.data();
+        for (int x = 0; x < rows.width; ++x) {
+          const float scaled = (float(src[x]) - range.source_offset) * range.factor;
+          mapped[x] = uint16_t(std::clamp(int(scaled + (range.destination_offset + .5f)), 0, source_max));
+        }
+        src = mapped;
+      }
+    }
+
     const int direction = (y & 1) ? -1 : 1, begin = direction == 1 ? 0 : rows.width - 1,
               end = direction == 1 ? rows.width : -1;
     for (int x = begin; x != end; x += direction) {
       int value = src[x];
-      if (c.source_full != c.destination_full) {
-        if constexpr (sizeof(S) == 1) {
+      if constexpr (sizeof(S) == 1) {
+        if (c.source_full != c.destination_full)
           value = p.range_u8[value];
-        } else {
+      } else if constexpr (!low) {
+        if (c.source_full != c.destination_full) {
           const float scaled = (float(value) - range.source_offset) * range.factor;
           value = std::clamp(int(scaled + (range.destination_offset + .5f)), 0, source_max);
         }
@@ -132,8 +149,16 @@ int vc_floyd_create(const vc_floyd_config* config, int width, int height, vc_flo
   try {
     auto rc = c;
     rc.destination_bits = c.source_bits;
-    *output = new vc_floyd_context{*config, vc::depth::BuildTransform(rc),         width, height, 0,
-                                   0,       std::vector<int>(size_t(width) + 2, 0)};
+    *output = new vc_floyd_context{
+        *config,
+        vc::depth::BuildTransform(rc),
+        width,
+        height,
+        0,
+        0,
+        std::vector<int>(size_t(width) + 2, 0),
+        {},
+        std::vector<uint16_t>(c.source_bits > 8 && q < 8 && c.source_full != c.destination_full ? width : 0)};
     if (c.source_bits == 8 && c.source_full != c.destination_full) {
       // Range conversion is independent of error diffusion. Cache its exact
       // float rounding and clamp for every byte value outside the feedback loop.

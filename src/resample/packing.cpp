@@ -105,7 +105,7 @@ void PrepareHorizontal(Coefficients& plan, size_t lanes) {
   // A uniform short support needs no per-block window or tap-loop dispatch.
   // Pair packing already bounds every lookup, including zero-weight edge mates.
   const int pairs = plan.filter_size / 2 + plan.filter_size % 2;
-  if (plan.bits_per_sample != 32 && pairs >= 1 && pairs <= 4 &&
+  if (plan.bits_per_sample != 32 && pairs >= 1 && pairs <= 5 &&
       4 * lanes <= size_t(std::numeric_limits<int16_t>::max()) && !packed.blocks.empty() && !packed.dot_outputs &&
       std::all_of(packed.blocks.begin(), packed.blocks.end(), [&](const HorizontalBlock& block) {
         return block.window_size == int(2 * lanes) && !block.stride_two && block.taps / 2 + block.taps % 2 == pairs;

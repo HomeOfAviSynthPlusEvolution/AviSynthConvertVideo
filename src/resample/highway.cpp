@@ -590,6 +590,8 @@ void SelectHorizontalInteger(const resample::Coefficients& plan, vc_const_plane 
       return HorizontalInteger<T, 3>(plan, source, destination, rows, source_first, destination_first);
     case 4:
       return HorizontalInteger<T, 4>(plan, source, destination, rows, source_first, destination_first);
+    case 5:
+      return HorizontalInteger<T, 5>(plan, source, destination, rows, source_first, destination_first);
     default:
       return HorizontalInteger<T>(plan, source, destination, rows, source_first, destination_first);
   }

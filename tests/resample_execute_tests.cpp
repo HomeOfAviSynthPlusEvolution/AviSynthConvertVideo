@@ -236,7 +236,7 @@ TEST(ResampleHighwayContract, HorizontalStrideTwoPairsAllTargetsExactBounds) {
 template <class T>
 void CheckSingleWindowPairs(int bits, const ResampleKernels& table) {
   const int lanes = int(table.lanes), sw = 2 * lanes + 9, width = 3 * lanes + 1, height = 4;
-  for (int taps = 1; taps <= std::min(7, 2 * lanes); ++taps) {
+  for (int taps = 1; taps <= std::min(9, 2 * lanes); ++taps) {
     auto plan = BuildCoefficients(TriangleFilter(), {sw, width, 0, double(sw), bits});
     plan.filter_size = plan.filter_size_real = taps;
     plan.sizes.assign(width, taps);
@@ -256,6 +256,10 @@ void CheckSingleWindowPairs(int bits, const ResampleKernels& table) {
     }
     plan.max_abs_sum = unit + 1024;
     PrepareHorizontal(plan, table.lanes);
+    if (plan.horizontal.dot_outputs) {
+      ASSERT_EQ(plan.horizontal.single_window_pairs, 0);
+      continue;
+    }
     ASSERT_EQ(plan.horizontal.single_window_pairs, (taps + 1) / 2);
     std::vector<T> input(size_t(sw) * height), expected(size_t(width) * height, T(19)), actual(expected);
     for (size_t i = 0; i < input.size(); ++i)

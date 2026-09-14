@@ -1,6 +1,6 @@
 # Video conversion benchmark results
 
-Current performance comparisons: **522 full-filter cases**, **592 kernel rows**, and **108 supplementary long-support resampling rows** (54 profiles × two targets). The supplementary set overlaps the filter audit. The tables include refreshed AMD measurements for **Floyd and integer/F32 horizontal resampling, including uniform short integer supports and long regular pair loads, paired F32 loads, single-vector float windows, long integer sliding pairs and fixed short F32 supports, Ordered quantization and range mapping, and U8 integer matrix accumulation, U8 depth range mapping and additional high-precision integer matrix coverage**. Unaffected paths retain their existing measurements. Missing upstream counterparts are explicitly marked, not counted as wins. Coverage is the measured workload set, not every possible parameter combination. Times are milliseconds.
+Current performance comparisons: **522 full-filter cases**, **592 kernel rows**, and **108 supplementary long-support resampling rows** (54 profiles × two targets). The supplementary set overlaps the filter audit. The tables include refreshed AMD measurements for **Floyd and integer/F32 horizontal resampling, including uniform short integer supports and long regular pair loads, paired F32 loads, single-vector float windows, long integer sliding pairs and fixed short F32 supports, Ordered quantization and range mapping, and U8 integer matrix accumulation, U8 depth range mapping, direct packed RGB repacking and additional high-precision integer matrix coverage**. Unaffected paths retain their existing measurements. Missing upstream counterparts are explicitly marked, not counted as wins. Coverage is the measured workload set, not every possible parameter combination. Times are milliseconds.
 
 ## Reference and method
 
@@ -9,7 +9,7 @@ Current performance comparisons: **522 full-filter cases**, **592 kernel rows**,
 - The U16 BGRA unpack alignment optimization applies only to AVX3_SPR. AMD AVX2/AVX3_ZEN4 unpack instructions are unchanged, so their existing rows remain current. Controlled-address AMD checks and the separate SPR PMU evidence are recorded in `docs/PMU-NEXT-2026-09-14/02-packed-alpha/`; server pipeline timings are not substituted into these AMD tables.
 - Upstream reference: `5c82777b374bdef16e13007a11e77d735ac1e4eb`. Its existing measurements are retained unchanged; no upstream code was timed during this refresh. Module and upstream values therefore come from separate sessions on the same AMD machine. Small differences are not established gains or regressions.
 - AVX2 uses SetMaxCPU("avx2") on the module DLL. Native measures the highest available production target, Highway **AVX3_ZEN4**, rather than choosing the fastest measured target. The upstream column uses its saved AVX512 result where implemented. Floyd remains the shared C implementation for both CPU settings.
-- Full-filter timing includes GetFrame processing and output allocation, excluding source generation, construction and output hashing. The original deterministic source and exact expressions are reused; increasing output frame numbers avoid output-cache hits. No Prefetch. Each observation is the median of five calibrated samples of approximately 15 ms, with 2–100 calls per sample. Three observations per module target are reduced to a median; AVX2/native run order alternates between rounds. These are warm single-thread measurements.
+- Full-filter timing includes GetFrame processing and output allocation, excluding source generation, construction and output hashing. The original deterministic source and exact expressions are reused; increasing output frame numbers avoid output-cache hits. No Prefetch. Each observation is the median of five calibrated samples of approximately 15 ms, with 2–100 calls per sample. Three observations per module target are reduced to a median; AVX2/native observations are measured separately. These are warm single-thread measurements.
 - Resampling kernel timing retains the original buffer geometry, deterministic input, coefficient preparation, call boundary, warmup and five-sample median procedure. Allocation, coefficient construction, C reference execution and output checking are outside timing. Three observations per module target are reduced to a median. The kernel harness runs AVX2 then native and does not execute upstream. Kernel and full-filter scopes must not be mixed.
 - Every refreshed module full-filter hash matches its none=C baseline in all rounds. Every refreshed kernel output matches C exactly, including F32. Equality flags compare refreshed module hashes with saved upstream hashes; upstream can differ due to rounding/clipping and corrected semantics. Hashes cover active pixels, excluding padding and frame properties.
 - Unaffected full-filter observations retain their recorded one or three rounds. Unaffected matrix U8 kernels retain five rounds; other matrix/depth/ordered kernels retain three, layout retains its five-sample harness, and vertical resampling retains its three observations. Unchanged supplementary paths retain three observations. Per-row notes identify their baseline and scope.
@@ -26,7 +26,7 @@ Current performance comparisons: **522 full-filter cases**, **592 kernel rows**,
 | floyd | 17 | 1.068 | 0.962–1.262 | 1.035 | 0.944–1.209 |
 | greyscale | 21 | 0.940 | 0.293–1.297 | 0.935 | 0.257–1.304 |
 | interlaced | 9 | 0.992 | 0.206–1.132 | 0.890 | 0.211–1.044 |
-| layout | 23 | 0.955 | 0.126–1.820 | 1.083 | 0.108–1.854 |
+| layout | 23 | 0.955 | 0.126–1.820 | 1.052 | 0.108–1.578 |
 | luma | 15 | 0.906 | 0.598–1.047 | 0.869 | 0.512–1.041 |
 | matrix-filter | 54 | 0.996 | 0.627–1.825 | 0.882 | 0.562–1.423 |
 | ordered | 16 | 0.970 | 0.306–1.330 | 0.876 | 0.249–1.097 |
@@ -321,10 +321,10 @@ Expand each family. CPU cells are **upstream ms / new ms / ratio**; low-work rat
 |---|---|---|---|---|---|---|---|
 | layout-001 | RGB24 | 1920×1080 | `src.ConvertToPlanarRGB()` | 0.1734 / 0.3108 / 1.792 | 0.1930 / 0.1949 / 1.010 | True / True | 3 / 3 |
 | layout-002 | RGB24 | 1920×1080 | `src.ConvertToPlanarRGBA()` | 0.2111 / 0.3722 / 1.763 | 0.2303 / 0.2873 / 1.248 | True / True | 3 / 3 |
-| layout-003 | RGB24 | 1920×1080 | `src.ConvertToRGB32()` | 0.1731 / 0.2592 / 1.498 | 0.2126 / 0.3453 / 1.624 | True / True | 3 / 3 |
+| layout-003 | RGB24 | 1920×1080 | `src.ConvertToRGB32()` | 0.1731 / 0.2592 / 1.498 | 0.2126 / 0.2281 / 1.073 | True / True | 3 / 3 |
 | layout-004 | RGB32 | 1920×1080 | `src.ConvertToPlanarRGB()` | 0.5575 / 0.3492 / 0.626 | 0.4042 / 0.4577 / 1.132 | True / True | 1 / 1 |
 | layout-005 | RGB32 | 1920×1080 | `src.ConvertToPlanarRGBA()` | 0.8304 / 0.6989 / 0.842 | 0.7914 / 0.5733 / 0.724 | True / True | 1 / 1 |
-| layout-006 | RGB32 | 1920×1080 | `src.ConvertToRGB24()` | 0.1524 / 0.2716 / 1.782 | 0.1785 / 0.3309 / 1.854 | True / True | 3 / 3 |
+| layout-006 | RGB32 | 1920×1080 | `src.ConvertToRGB24()` | 0.1524 / 0.2716 / 1.782 | 0.1785 / 0.1857 / 1.041 | True / True | 3 / 3 |
 | layout-007 | RGBP8 | 1920×1080 | `src.ConvertToRGB24()` | 1.7670 / 0.2233 / 0.126 | 1.7667 / 0.1903 / 0.108 | True / True | 3 / 3 |
 | layout-008 | RGBP8 | 1920×1080 | `src.ConvertToRGB32()` | 0.4555 / 0.2998 / 0.658 | 0.4221 / 0.4442 / 1.052 | True / True | 1 / 1 |
 | layout-009 | RGBP8 | 1920×1080 | `src.ConvertToPlanarRGB()` | 0.0000 / 0.0001 / low-work | 0.0000 / 0.0001 / low-work | True / True | 1 / 1 |
@@ -335,10 +335,10 @@ Expand each family. CPU cells are **upstream ms / new ms / ratio**; low-work rat
 | layout-014 | RGBAP8 | 1920×1080 | `src.ConvertToPlanarRGBA()` | 0.0000 / 0.0001 / low-work | 0.0000 / 0.0001 / low-work | True / True | 1 / 1 |
 | layout-015 | RGB48 | 1920×1080 | `src.ConvertToPlanarRGB()` | 0.6491 / 1.1813 / 1.820 | 0.6713 / 0.9719 / 1.448 | True / True | 3 / 3 |
 | layout-016 | RGB48 | 1920×1080 | `src.ConvertToPlanarRGBA()` | 1.2804 / 1.3074 / 1.021 | 1.3230 / 1.0610 / 0.802 | True / True | 1 / 1 |
-| layout-017 | RGB48 | 1920×1080 | `src.ConvertToRGB64()` | 0.4729 / 0.7580 / 1.603 | 0.4295 / 0.7590 / 1.767 | True / True | 3 / 3 |
+| layout-017 | RGB48 | 1920×1080 | `src.ConvertToRGB64()` | 0.4729 / 0.7580 / 1.603 | 0.4295 / 0.6779 / 1.578 | True / True | 3 / 3 |
 | layout-018 | RGB64 | 1920×1080 | `src.ConvertToPlanarRGB()` | 1.5071 / 1.4133 / 0.938 | 1.2303 / 1.0863 / 0.883 | True / True | 1 / 1 |
 | layout-019 | RGB64 | 1920×1080 | `src.ConvertToPlanarRGBA()` | 1.6310 / 1.5166 / 0.930 | 1.4925 / 1.2045 / 0.807 | True / True | 1 / 1 |
-| layout-020 | RGB64 | 1920×1080 | `src.ConvertToRGB48()` | 0.5851 / 0.8624 / 1.474 | 0.5943 / 0.8497 / 1.430 | True / True | 3 / 3 |
+| layout-020 | RGB64 | 1920×1080 | `src.ConvertToRGB48()` | 0.5851 / 0.8624 / 1.474 | 0.5943 / 0.7335 / 1.234 | True / True | 3 / 3 |
 | layout-021 | RGBP16 | 1920×1080 | `src.ConvertToRGB48()` | 2.0026 / 1.0104 / 0.505 | 1.9881 / 0.9013 / 0.453 | True / True | 1 / 1 |
 | layout-022 | RGBP16 | 1920×1080 | `src.ConvertToRGB64()` | 1.1720 / 1.1193 / 0.955 | 1.0611 / 1.1857 / 1.117 | True / True | 1 / 1 |
 | layout-023 | RGBP16 | 1920×1080 | `src.ConvertToPlanarRGB()` | 0.0000 / 0.0001 / low-work | 0.0000 / 0.0001 / low-work | True / True | 1 / 1 |
@@ -347,7 +347,7 @@ Expand each family. CPU cells are **upstream ms / new ms / ratio**; low-work rat
 | layout-026 | RGBAP16 | 1920×1080 | `src.ConvertToRGB64()` | 1.2382 / 1.1531 / 0.931 | 1.1526 / 1.2477 / 1.083 | True / True | 1 / 1 |
 | layout-027 | RGBAP16 | 1920×1080 | `src.ConvertToPlanarRGB()` | 0.0003 / 0.0003 / low-work | 0.0003 / 0.0003 / low-work | True / True | 1 / 1 |
 | layout-028 | RGBAP16 | 1920×1080 | `src.ConvertToPlanarRGBA()` | 0.0000 / 0.0001 / low-work | 0.0000 / 0.0001 / low-work | True / True | 1 / 1 |
-| layout-466 | RGB32 | 3840×2160 | `src.ConvertToRGB24()` | 1.2357 / 1.7546 / 1.420 | 1.2510 / 1.7082 / 1.365 | True / True | 3 / 3 |
+| layout-466 | RGB32 | 3840×2160 | `src.ConvertToRGB24()` | 1.2357 / 1.7546 / 1.420 | 1.2510 / 1.6567 / 1.324 | True / True | 3 / 3 |
 
 </details>
 

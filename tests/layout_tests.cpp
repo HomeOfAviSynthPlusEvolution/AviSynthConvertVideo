@@ -369,12 +369,18 @@ TEST(LayoutBounds, NativePackedTailsUseExactAllocations) {
 } // namespace
 
 namespace {
+std::vector<int64_t> RepackTargets() {
+  std::vector<int64_t> result{VC_TARGET_C};
+  for (int64_t mask = vc_layout_supported_targets(); mask; mask &= mask - 1)
+    result.push_back(mask & -mask);
+  return result;
+}
 template <class T>
 void CheckRepack() {
-  for (int64_t target : {VC_TARGET_C, VC_TARGET_NATIVE})
+  for (int64_t target : RepackTargets())
     for (int sc : {3, 4})
       for (int dc : {3, 4})
-        for (int width : {1, 7, 16, 17, 33, 65})
+        for (int width : {1, 7, 16, 17, 31, 32, 33, 63, 64, 65, 127, 128, 129})
           for (bool flip : {false, true}) {
             const auto* functions = vc_get_layout_functions(target);
             ASSERT_NE(functions, nullptr);

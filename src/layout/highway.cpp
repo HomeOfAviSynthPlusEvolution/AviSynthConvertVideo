@@ -1,6 +1,7 @@
 // Highway layout kernels developed in AviSynthConvertVideo.
 // Licensed under GPL version 2 or later with the inherited AviSynth linking exception.
 #include "validation.h"
+#include <cstring>
 #include <hwy/targets.h>
 #include <hwy/cache_control.h>
 
@@ -111,8 +112,69 @@ void PackBgr(vc_const_rgb_planes source, vc_plane destination, T fill, vc_rows r
   }
 }
 
+#if HWY_ARCH_X86 && HWY_TARGET <= HWY_AVX3
+// Keep packed samples packed: three/four contiguous input vectors become
+// four/three output vectors, without a round trip through planar channels.
+template <class T, int SC, int DC>
+void RepackDirect(vc_const_plane source, vc_plane destination, T fill, vc_rows rows) {
+  // 32-byte batches retain the cache-resident gain without the measured Zen4
+  // large-frame regression of 64-byte batches (U16 1080p and U8 4K).
+  const hn::CappedTag<T, 32 / sizeof(T)> d;
+  const size_t n = hn::Lanes(d), w = size_t(rows.width);
+  HWY_ALIGN T indices[4][HWY_MAX_BYTES / sizeof(T)];
+  for (size_t k = 0; k < DC; ++k)
+    for (size_t i = 0; i < n; ++i) {
+      const size_t j = k * n + i;
+      const size_t base = SC == 4 ? k : k == 0 ? 0 : k - 1;
+      indices[k][i] = T((j / DC) * SC + j % DC - base * n);
+    }
+  const auto i0 = hn::SetTableIndices(d, indices[0]), i1 = hn::SetTableIndices(d, indices[1]);
+  const auto i2 = hn::SetTableIndices(d, indices[2]);
+  const auto alpha = hn::Eq(hn::And(hn::Iota(d, 0), hn::Set(d, T(3))), hn::Set(d, T(3)));
+  const auto vf = hn::Set(d, fill);
+  for (int y = rows.first_row; y < rows.first_row + rows.row_count; ++y) {
+    const auto* src = Row<T>(source, y);
+    auto* dst = Row<T>(destination, y);
+    size_t x = 0;
+    for (; x + n <= w; x += n) {
+      const auto a = hn::LoadU(d, src + x * SC), b = hn::LoadU(d, src + x * SC + n);
+      const auto c = hn::LoadU(d, src + x * SC + 2 * n);
+      if constexpr (SC == 4) {
+        const auto e = hn::LoadU(d, src + x * SC + 3 * n);
+        hn::StoreU(hn::TwoTablesLookupLanes(a, b, i0), d, dst + x * DC);
+        hn::StoreU(hn::TwoTablesLookupLanes(b, c, i1), d, dst + x * DC + n);
+        hn::StoreU(hn::TwoTablesLookupLanes(c, e, i2), d, dst + x * DC + 2 * n);
+      } else {
+        const auto i3 = hn::SetTableIndices(d, indices[3]);
+        hn::StoreU(hn::IfThenElse(alpha, vf, hn::TableLookupLanes(a, i0)), d, dst + x * DC);
+        hn::StoreU(hn::IfThenElse(alpha, vf, hn::TwoTablesLookupLanes(a, b, i1)), d, dst + x * DC + n);
+        hn::StoreU(hn::IfThenElse(alpha, vf, hn::TwoTablesLookupLanes(b, c, i2)), d, dst + x * DC + 2 * n);
+        hn::StoreU(hn::IfThenElse(alpha, vf, hn::TableLookupLanes(c, i3)), d, dst + x * DC + 3 * n);
+      }
+    }
+    for (; x < w; ++x) {
+      for (int channel = 0; channel < 3; ++channel)
+        dst[x * DC + channel] = src[x * SC + channel];
+      if constexpr (DC == 4)
+        dst[x * DC + 3] = fill;
+    }
+  }
+}
+#endif
+
 template <class T, int SC, int DC>
 void Repack(vc_const_plane source, vc_plane destination, T fill, vc_rows rows) {
+  if constexpr (SC == DC) {
+    for (int y = rows.first_row; y < rows.first_row + rows.row_count; ++y)
+      std::memcpy(Row<T>(destination, y), Row<T>(source, y), size_t(rows.width) * SC * sizeof(T));
+    return;
+  }
+#if HWY_ARCH_X86 && HWY_TARGET <= HWY_AVX3
+  if constexpr (SC != DC && (sizeof(T) == 2 || HWY_TARGET <= HWY_AVX3_DL)) {
+    RepackDirect<T, SC, DC>(source, destination, fill, rows);
+    return;
+  }
+#endif
   const hn::ScalableTag<T> d;
   const size_t n = hn::Lanes(d), w = size_t(rows.width);
   for (int y = rows.first_row; y < rows.first_row + rows.row_count; ++y) {

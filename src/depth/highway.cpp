@@ -14,6 +14,47 @@ namespace vc {
 namespace HWY_NAMESPACE {
 namespace hn = hwy::HWY_NAMESPACE;
 #if HWY_TARGET != HWY_SCALAR && HWY_TARGET != HWY_EMU128
+// Split limited->full scaling into x + x*(scale-1), so all four U8 range
+// mappings use signed Q15 coefficients. The rounding choices reproduce every
+// scalar output, including limited chroma code 16; packed saturation clips.
+void DepthU8Range(const depth::Transform& t, vc_const_plane source, vc_plane destination, vc_rows rows) {
+  const bool full = t.config.source_full != 0, chroma = t.config.chroma != 0;
+  const int limited_span = chroma ? 224 : 219;
+  const int coefficient = full ? (limited_span * 32768 + 127) / 255 : (255 - limited_span) * 32768 / limited_span;
+  const int source_offset = chroma ? 128 : full ? 0 : 16;
+  const int destination_offset = chroma ? 128 : full ? 16 : 0;
+  const hn::ScalableTag<int16_t> d;
+  const hn::Rebind<uint8_t, decltype(d)> ds;
+  const hn::Repartition<uint8_t, decltype(d)> d8;
+  const auto factor = hn::Set(d, int16_t(coefficient)), offset = hn::Set(d, int16_t(source_offset));
+  const auto bias = hn::Set(d, int16_t(destination_offset));
+  const size_t lanes = hn::Lanes(d), width = size_t(rows.width);
+  const auto convert = [&](const uint8_t* src) HWY_ATTR {
+    const auto input = hn::Sub(hn::PromoteTo(d, hn::LoadU(ds, src)), offset);
+    auto result = hn::MulFixedPoint15(input, factor);
+    if (!full)
+      result = hn::Add(result, input);
+    return hn::Add(result, bias);
+  };
+  for (int y = rows.first_row; y < rows.first_row + rows.row_count; ++y) {
+    const auto* src = Row<uint8_t>(source, y);
+    auto* dst = Row<uint8_t>(destination, y);
+    size_t x = 0;
+    for (; x + 2 * lanes <= width; x += 2 * lanes) {
+      const auto a = convert(src + x), b = convert(src + x + lanes);
+      hn::StoreU(hn::OrderedDemote2To(d8, a, b), d8, dst + x);
+    }
+    for (; x + lanes <= width; x += lanes)
+      hn::StoreU(hn::DemoteTo(ds, convert(src + x)), ds, dst + x);
+    for (; x < width; ++x) {
+      const int centered = int(src[x]) - source_offset;
+      const int product = centered * coefficient + 16384;
+      const int rounded = product >= 0 ? product / 32768 : -((-product + 32767) / 32768);
+      dst[x] = uint8_t(std::clamp(rounded + (full ? 0 : centered) + destination_offset, 0, 255));
+    }
+  }
+}
+
 // Integer shifts and exact 8->16 expansion operate at storage width. Saturating
 // addition is valid before a right shift because overflow is already above the
 // destination ceiling; a second clamp covers sub-16-bit source ceilings.
@@ -146,6 +187,9 @@ void DepthAffine(const depth::Transform& t, vc_const_plane source, vc_plane dest
 }
 template <class S, class D>
 depth::RowKernel ChooseDepthStorage(const depth::Transform& t) {
+  if constexpr (sizeof(S) == 1 && sizeof(D) == 1)
+    if (t.config.source_full != t.config.destination_full)
+      return DepthU8Range;
   if constexpr (!std::is_same_v<S, float> && !std::is_same_v<D, float>) {
     if (!t.config.source_full && !t.config.destination_full)
       return DepthShift<S, D, false>;

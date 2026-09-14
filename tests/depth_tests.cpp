@@ -241,3 +241,35 @@ TEST(DepthNumerics, ExhaustiveU16CodesMatchCForAllRangeAndChromaCombinations) {
           EXPECT_EQ(scalar, native);
         }
 }
+
+TEST(DepthNumerics, ExhaustiveU8RangeAcrossTargetsAndExactRowBounds) {
+  for (int full : {0, 1})
+    for (int chroma : {0, 1}) {
+      const vc_depth_config config{8, 8, full, 1 - full, chroma};
+      vc_depth_plan* raw = nullptr;
+      ASSERT_EQ(vc_depth_create(&config, &raw), VC_OK);
+      Plan reference(raw, vc_depth_destroy);
+      for (int width : {1, 7, 15, 16, 17, 31, 32, 33, 63, 64, 65, 255, 256, 257}) {
+        constexpr int height = 3;
+        std::vector<uint8_t> source(width * height), expected(source.size()), output(source.size());
+        for (size_t x = 0; x < source.size(); ++x)
+          source[x] = uint8_t(x * 73 + 17);
+        const auto original = source;
+        const vc_const_plane input{source.data() + width * (height - 1), -ptrdiff_t(width)};
+        for (int64_t remaining = vc_depth_supported_targets(); remaining; remaining &= remaining - 1) {
+          const auto target = remaining & -remaining;
+          SCOPED_TRACE(::testing::Message() << full << chroma << " width=" << width << " target=" << target);
+          ASSERT_EQ(vc_depth_create_for_target(&config, target, &raw), VC_OK);
+          Plan plan(raw, vc_depth_destroy);
+          for (const auto rows : {vc_rows{width, height, 0, height}, vc_rows{width, height, 1, 1}}) {
+            std::fill(expected.begin(), expected.end(), 77);
+            std::fill(output.begin(), output.end(), 77);
+            ASSERT_EQ(vc_depth_execute(reference.get(), input, {expected.data(), width}, rows), VC_OK);
+            ASSERT_EQ(vc_depth_execute(plan.get(), input, {output.data(), width}, rows), VC_OK);
+            EXPECT_EQ(output, expected);
+          }
+        }
+        EXPECT_EQ(source, original);
+      }
+    }
+}

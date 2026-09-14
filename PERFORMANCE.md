@@ -1,11 +1,11 @@
 # Video conversion benchmark results
 
-Current performance comparisons: **522 full-filter cases**, **592 kernel rows**, and **108 supplementary long-support resampling rows** (54 profiles × two targets). The supplementary set overlaps the filter audit. The tables include refreshed AMD measurements for **Floyd and integer/F32 horizontal resampling, including uniform short integer supports and long regular pair loads, paired F32 loads, single-vector float windows, long integer sliding pairs and fixed short F32 supports, Ordered quantization and range mapping, and U8 integer matrix accumulation, with additional high-precision integer matrix coverage**. Unaffected paths retain their existing measurements. Missing upstream counterparts are explicitly marked, not counted as wins. Coverage is the measured workload set, not every possible parameter combination. Times are milliseconds.
+Current performance comparisons: **522 full-filter cases**, **592 kernel rows**, and **108 supplementary long-support resampling rows** (54 profiles × two targets). The supplementary set overlaps the filter audit. The tables include refreshed AMD measurements for **Floyd and integer/F32 horizontal resampling, including uniform short integer supports and long regular pair loads, paired F32 loads, single-vector float windows, long integer sliding pairs and fixed short F32 supports, Ordered quantization and range mapping, and U8 integer matrix accumulation, U8 depth range mapping and additional high-precision integer matrix coverage**. Unaffected paths retain their existing measurements. Missing upstream counterparts are explicitly marked, not counted as wins. Coverage is the measured workload set, not every possible parameter combination. Times are milliseconds.
 
 ## Reference and method
 
 - AMD refresh: 2026-09-14, Ryzen 9 7940H, Windows x64, clang-cl 22.1.3 Release, pinned to logical CPU 12 (0x1000). Each refresh uses one optimized module build for its affected paths. No concurrent build or test work during timing.
-- Affected timings are replaced in their existing rows using the original harness, deterministic input, pitches and statistics; unchanged paths retain their valid measurements. Full-filter observations use the original GetFrame harness and three rounds. Matrix and Ordered kernel observations retain three warmups and seven samples of ten calls; resampling uses its original axis, ratio and pipeline harnesses. The fixed host source is `bda0aab8bd9b366da41e946d41236735bae839af`. Source identities, binary hashes, raw observations, scope checks and reproduction scripts are recorded in untracked `docs/PERFORMANCE-CURRENT-2026-09-14/` and `docs/PMU-NEXT-2026-09-14/`.
+- Affected timings are replaced in their existing rows using the original harness, deterministic input, pitches and statistics; unchanged paths retain their valid measurements. Full-filter observations use the original GetFrame harness and three rounds. Matrix, Depth and Ordered kernel observations retain three warmups and seven samples of ten calls; resampling uses its original axis, ratio and pipeline harnesses. The fixed host source is `bda0aab8bd9b366da41e946d41236735bae839af`. Source identities, binary hashes, raw observations, scope checks and reproduction scripts are recorded in untracked `docs/PERFORMANCE-CURRENT-2026-09-14/` and `docs/PMU-NEXT-2026-09-14/`.
 - The U16 BGRA unpack alignment optimization applies only to AVX3_SPR. AMD AVX2/AVX3_ZEN4 unpack instructions are unchanged, so their existing rows remain current. Controlled-address AMD checks and the separate SPR PMU evidence are recorded in `docs/PMU-NEXT-2026-09-14/02-packed-alpha/`; server pipeline timings are not substituted into these AMD tables.
 - Upstream reference: `5c82777b374bdef16e13007a11e77d735ac1e4eb`. Its existing measurements are retained unchanged; no upstream code was timed during this refresh. Module and upstream values therefore come from separate sessions on the same AMD machine. Small differences are not established gains or regressions.
 - AVX2 uses SetMaxCPU("avx2") on the module DLL. Native measures the highest available production target, Highway **AVX3_ZEN4**, rather than choosing the fastest measured target. The upstream column uses its saved AVX512 result where implemented. Floyd remains the shared C implementation for both CPU settings.
@@ -21,7 +21,7 @@ Current performance comparisons: **522 full-filter cases**, **592 kernel rows**,
 | Family | Nontrivial cases | AVX2 median | AVX2 range | Native median | Native range |
 |---|---|---|---|---|---|
 | chroma | 25 | 0.908 | 0.544–1.304 | 0.816 | 0.576–1.370 |
-| depth | 132 | 1.141 | 0.908–1.506 | 0.994 | 0.837–1.204 |
+| depth | 132 | 1.141 | 0.379–1.506 | 0.994 | 0.334–1.204 |
 | depth-alpha | 13 | 1.067 | 0.976–3.307 | 1.028 | 0.904–2.917 |
 | floyd | 17 | 1.068 | 0.962–1.262 | 1.035 | 0.944–1.209 |
 | greyscale | 21 | 0.940 | 0.293–1.297 | 0.935 | 0.257–1.304 |
@@ -87,8 +87,8 @@ Expand each family. CPU cells are **upstream ms / new ms / ratio**; low-work rat
 
 | Case | Input | Size | Expression | AVX2: old / new / ratio | Native: old / new / ratio | Equal output | Observations AVX2 / native |
 |---|---|---|---|---|---|---|---|
-| depth-146 | Y8 | 1920×1080 | `src.ConvertBits(8,fulls=false,fulld=true,dither=-1)` | 0.1876 / 0.2025 / 1.079 | 0.1904 / 0.1812 / 0.952 | True / True | 1 / 1 |
-| depth-147 | Y8 | 1920×1080 | `src.ConvertBits(8,fulls=true,fulld=false,dither=-1)` | 0.1773 / 0.1669 / 0.941 | 0.1784 / 0.1511 / 0.847 | True / True | 1 / 1 |
+| depth-146 | Y8 | 1920×1080 | `src.ConvertBits(8,fulls=false,fulld=true,dither=-1)` | 0.1876 / 0.0712 / 0.379 | 0.1904 / 0.0636 / 0.334 | True / True | 3 / 3 |
+| depth-147 | Y8 | 1920×1080 | `src.ConvertBits(8,fulls=true,fulld=false,dither=-1)` | 0.1773 / 0.0761 / 0.429 | 0.1784 / 0.0648 / 0.363 | True / True | 3 / 3 |
 | depth-148 | Y8 | 1920×1080 | `src.ConvertBits(10,fulls=true,fulld=true,dither=-1)` | 0.1653 / 0.1683 / 1.018 | 0.1658 / 0.1455 / 0.877 | True / True | 1 / 1 |
 | depth-149 | Y8 | 1920×1080 | `src.ConvertBits(10,fulls=false,fulld=false,dither=-1)` | 0.0674 / 0.0732 / 1.086 | 0.0696 / 0.0679 / 0.975 | True / True | 3 / 3 |
 | depth-150 | Y8 | 1920×1080 | `src.ConvertBits(10,fulls=false,fulld=true,dither=-1)` | 0.1734 / 0.2031 / 1.172 | 0.1805 / 0.1672 / 0.926 | True / True | 3 / 3 |
@@ -227,7 +227,7 @@ Expand each family. CPU cells are **upstream ms / new ms / ratio**; low-work rat
 
 | Case | Input | Size | Expression | AVX2: old / new / ratio | Native: old / new / ratio | Equal output | Observations AVX2 / native |
 |---|---|---|---|---|---|---|---|
-| depth-alpha-278 | RGB32 | 1920×1080 | `src.ConvertBits(8,fulls=false,fulld=true,dither=-1)` | 0.7562 / 1.6151 / 2.136 | 0.7961 / 1.5551 / 1.953 | False / False | 3 / 3 |
+| depth-alpha-278 | RGB32 | 1920×1080 | `src.ConvertBits(8,fulls=false,fulld=true,dither=-1)` | 0.7562 / 1.1140 / 1.473 | 0.7961 / 1.0536 / 1.324 | False / False | 3 / 3 |
 | depth-alpha-279 | RGB32 | 1920×1080 | `src.ConvertBits(16,fulls=false,fulld=true,dither=-1)` | 0.7599 / 2.4516 / 3.226 | 0.8084 / 2.3522 / 2.910 | False / False | 3 / 3 |
 | depth-alpha-280 | RGB32 | 1920×1080 | `src.ConvertToPlanarRGBA().ConvertBits(32,fulls=false,fulld=true,dither=-1)` | 2.3478 / 2.2916 / 0.976 | 2.2197 / 2.1896 / 0.986 | True / True | 1 / 1 |
 | depth-alpha-281 | RGB64 | 1920×1080 | `src.ConvertBits(8,fulls=false,fulld=true,dither=-1)` | 0.8169 / 2.5374 / 3.106 | 0.8699 / 2.2902 / 2.633 | False / False | 3 / 3 |
@@ -673,10 +673,10 @@ Allocation and coefficient construction are outside these timings. Baseline and 
 
 | Route | Target | Upstream ms | New ms | New / upstream | Baseline | Notes |
 |---|---|---|---|---|---|---|
-| source_bits=8; destination_bits=8; source_full=0; destination_full=1; chroma=0 | AVX2 | 0.1872 | 0.2056 | 1.098 | AVX2 | Fresh three-round measurement. Old FMA may differ from strict C rounding. |
-| source_bits=8; destination_bits=8; source_full=0; destination_full=1; chroma=0 | AVX3_ZEN4 | 0.1872 | 0.1794 | 0.958 | AVX2 | Fresh three-round measurement. Old FMA may differ from strict C rounding. |
-| source_bits=8; destination_bits=8; source_full=0; destination_full=1; chroma=1 | AVX2 | 0.1845 | 0.2007 | 1.087 | AVX2 | Fresh three-round measurement. Old FMA may differ from strict C rounding. |
-| source_bits=8; destination_bits=8; source_full=0; destination_full=1; chroma=1 | AVX3_ZEN4 | 0.1845 | 0.1768 | 0.958 | AVX2 | Fresh three-round measurement. Old FMA may differ from strict C rounding. |
+| source_bits=8; destination_bits=8; source_full=0; destination_full=1; chroma=0 | AVX2 | 0.1872 | 0.0722 | 0.386 | AVX2 | AMD current-code refresh, three rounds; exact C output. Existing upstream baseline retained; upstream FMA rounding may differ. |
+| source_bits=8; destination_bits=8; source_full=0; destination_full=1; chroma=0 | AVX3_ZEN4 | 0.1872 | 0.0611 | 0.326 | AVX2 | AMD current-code refresh, three rounds; exact C output. Existing upstream baseline retained; upstream FMA rounding may differ. |
+| source_bits=8; destination_bits=8; source_full=0; destination_full=1; chroma=1 | AVX2 | 0.1845 | 0.0726 | 0.394 | AVX2 | AMD current-code refresh, three rounds; exact C output. Existing upstream baseline retained; upstream FMA rounding may differ. |
+| source_bits=8; destination_bits=8; source_full=0; destination_full=1; chroma=1 | AVX3_ZEN4 | 0.1845 | 0.0609 | 0.330 | AVX2 | AMD current-code refresh, three rounds; exact C output. Existing upstream baseline retained; upstream FMA rounding may differ. |
 | source_bits=8; destination_bits=10; source_full=1; destination_full=1; chroma=0 | AVX2 | 0.1624 | 0.1661 | 1.023 | AVX2 | Fresh three-round measurement. Old FMA may differ from strict C rounding. |
 | source_bits=8; destination_bits=10; source_full=1; destination_full=1; chroma=0 | AVX3_ZEN4 | 0.1624 | 0.1431 | 0.881 | AVX2 | Fresh three-round measurement. Old FMA may differ from strict C rounding. |
 | source_bits=8; destination_bits=10; source_full=0; destination_full=0; chroma=0 | AVX2 | 0.0588 | 0.0699 | 1.188 | AVX2 | Fresh three-round measurement. Old FMA may differ from strict C rounding. |

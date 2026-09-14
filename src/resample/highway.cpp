@@ -311,11 +311,24 @@ auto LoadAccumulator(D d, const T* ptr) {
   else
     return hn::PromoteTo(d, hn::LoadU(ds, ptr));
 }
-template <class T, class D>
+template <int pairs = 0, class T, class D>
 auto PairedHorizontalSum(D d, const resample::Coefficients& plan, const resample::HorizontalBlock& block,
                          const T* source, int bias) {
   const hn::Repartition<int16_t, D> d16;
   const size_t lanes16 = hn::Lanes(d16);
+  if constexpr (pairs != 0) {
+    const auto values = LoadSigned16(d16, source + block.source_start, bias);
+    auto sum = hn::Zero(d), odd = hn::Zero(d);
+    for (int k = 0; k < pairs; ++k) {
+      const size_t offset = block.pair_start + size_t(k) * lanes16;
+      const auto index = hn::LoadU(d16, plan.horizontal.pair_indices.data() + offset);
+      const auto samples = hn::TableLookupLanes(values, hn::IndicesFromVec(d16, index));
+      const auto weights = hn::LoadU(d16, plan.horizontal.pair_weights.data() + offset);
+      sum = hn::ReorderWidenMulAccumulate(d, samples, weights, sum, odd);
+    }
+    constexpr int shift = sizeof(T) == 1 ? 14 : 13;
+    return hn::Add(hn::RearrangeToOddPlusEven(sum, odd), hn::Set(d, 1 << (shift - 1)));
+  }
   if (block.stride_two) {
     // PrepareHorizontal proves these pair loads remain inside the row.
     // The regular offset pattern needs neither index loads nor lane lookups.
@@ -454,7 +467,7 @@ void HorizontalLongInteger(D d, const resample::Coefficients& plan, const T* sou
   }
 }
 
-template <class T>
+template <class T, int pairs = 0>
 void HorizontalInteger(const resample::Coefficients& plan, vc_const_plane source, vc_plane destination, vc_rows rows,
                        int source_first, int destination_first) {
   const hn::ScalableTag<int32_t> d;
@@ -473,7 +486,7 @@ void HorizontalInteger(const resample::Coefficients& plan, vc_const_plane source
   for (int y = rows.first_row; y < rows.first_row + rows.row_count; ++y) {
     const T* src = Row<T>(source, y - source_first);
     T* dst = Row<T>(destination, y - destination_first);
-    if (gather_safe && lanes == 8 && plan.horizontal.lanes == lanes && plan.horizontal.dot_outputs) {
+    if (pairs == 0 && gather_safe && lanes == 8 && plan.horizontal.lanes == lanes && plan.horizontal.dot_outputs) {
       const hn::Repartition<int16_t, decltype(d)> d16;
       const hn::Half<decltype(d)> dh;
       const hn::Rebind<T, decltype(dh)> dout;
@@ -517,6 +530,13 @@ void HorizontalInteger(const resample::Coefficients& plan, vc_const_plane source
     }
     size_t x = 0;
     for (; x < end; x += lanes) {
+      if constexpr (pairs != 0) {
+        auto sum = PairedHorizontalSum<pairs>(d, plan, plan.horizontal.blocks[x / lanes], src, bias);
+        sum = hn::ShiftRight<shift>(hn::Add(sum, hn::Set(d, bias << shift)));
+        sum = LimitEffectiveBits<T>(d, sum, plan.bits_per_sample);
+        hn::StoreU(hn::DemoteTo(ds, sum), ds, dst + x);
+        continue;
+      }
       if (plan.horizontal.lanes == lanes) {
         if (!plan.horizontal.blocks[x / lanes].window_size) {
           HorizontalLongInteger(d, plan, src, dst, x, lanes, bias);
@@ -556,12 +576,30 @@ void HorizontalInteger(const resample::Coefficients& plan, vc_const_plane source
     }
   }
 }
+template <class T>
+void SelectHorizontalInteger(const resample::Coefficients& plan, vc_const_plane source, vc_plane destination,
+                             vc_rows rows, int source_first, int destination_first) {
+  const hn::ScalableTag<int32_t> d;
+  const int pairs = plan.horizontal.lanes == hn::Lanes(d) ? plan.horizontal.single_window_pairs : 0;
+  switch (pairs) {
+    case 1:
+      return HorizontalInteger<T, 1>(plan, source, destination, rows, source_first, destination_first);
+    case 2:
+      return HorizontalInteger<T, 2>(plan, source, destination, rows, source_first, destination_first);
+    case 3:
+      return HorizontalInteger<T, 3>(plan, source, destination, rows, source_first, destination_first);
+    case 4:
+      return HorizontalInteger<T, 4>(plan, source, destination, rows, source_first, destination_first);
+    default:
+      return HorizontalInteger<T>(plan, source, destination, rows, source_first, destination_first);
+  }
+}
 void RunHorizontalInteger(const resample::Coefficients& plan, vc_const_plane source, vc_plane destination, vc_rows rows,
                           int source_first, int destination_first) {
   if (plan.bits_per_sample == 8)
-    HorizontalInteger<uint8_t>(plan, source, destination, rows, source_first, destination_first);
+    SelectHorizontalInteger<uint8_t>(plan, source, destination, rows, source_first, destination_first);
   else
-    HorizontalInteger<uint16_t>(plan, source, destination, rows, source_first, destination_first);
+    SelectHorizontalInteger<uint16_t>(plan, source, destination, rows, source_first, destination_first);
 }
 template <class D>
 auto StrideFourHorizontalSum(D d, const resample::Coefficients& plan, const resample::HorizontalBlock& block,

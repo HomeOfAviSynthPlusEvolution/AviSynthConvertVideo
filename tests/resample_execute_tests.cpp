@@ -233,6 +233,60 @@ TEST(ResampleHighwayContract, HorizontalStrideTwoPairsAllTargetsExactBounds) {
     CheckStrideTwoPairs<uint16_t>(16, *table);
   }
 }
+template <class T>
+void CheckSingleWindowPairs(int bits, const ResampleKernels& table) {
+  const int lanes = int(table.lanes), sw = 2 * lanes + 9, width = 3 * lanes + 1, height = 4;
+  for (int taps = 1; taps <= std::min(7, 2 * lanes); ++taps) {
+    auto plan = BuildCoefficients(TriangleFilter(), {sw, width, 0, double(sw), bits});
+    plan.filter_size = plan.filter_size_real = taps;
+    plan.sizes.assign(width, taps);
+    // All lookup windows end exactly at the source row boundary. The odd
+    // final tap has a zero-weight mate, which must still use a valid index.
+    plan.offsets.assign(width, sw - 2 * lanes);
+    plan.integers.assign(size_t(width) * taps, 0);
+    const int unit = 1 << (sizeof(T) == 1 ? 14 : 13);
+    for (int x = 0; x < width; ++x) {
+      int sum = 0;
+      for (int k = 0; k < taps - 1; ++k) {
+        const int value = k % 2 ? -73 : 91;
+        plan.integers[size_t(x) * taps + k] = int16_t(value);
+        sum += value;
+      }
+      plan.integers[size_t(x) * taps + taps - 1] = int16_t(unit - sum);
+    }
+    plan.max_abs_sum = unit + 1024;
+    PrepareHorizontal(plan, table.lanes);
+    ASSERT_EQ(plan.horizontal.single_window_pairs, (taps + 1) / 2);
+    std::vector<T> input(size_t(sw) * height), expected(size_t(width) * height, T(19)), actual(expected);
+    for (size_t i = 0; i < input.size(); ++i)
+      input[i] = T((i * 9829) & ((1 << bits) - 1));
+    const vc_const_plane src{input.data() + size_t(sw) * (height - 1), -ptrdiff_t(sw * sizeof(T))};
+    const vc_plane ref{expected.data() + size_t(width) * (height - 1), -ptrdiff_t(width * sizeof(T))};
+    const vc_plane dst{actual.data() + size_t(width) * (height - 1), -ptrdiff_t(width * sizeof(T))};
+    const vc_rows rows{width, height, 1, height - 1};
+    ASSERT_EQ(ExecuteC(plan, Axis::Horizontal, src, ref, rows), VC_OK);
+    table.horizontal_integer(plan, src, dst, rows, 0, 0);
+    ASSERT_EQ(actual, expected) << "bits=" << bits << " taps=" << taps << " lanes=" << lanes;
+    // The entry must retain the wide-accumulator fallback for an unsafe bound.
+    plan.max_abs_sum = -1;
+    std::fill(actual.begin(), actual.end(), T(19));
+    table.horizontal_integer(plan, src, dst, rows, 0, 0);
+    ASSERT_EQ(actual, expected);
+  }
+}
+TEST(ResampleHighwayContract, HorizontalSingleWindowPairsAllTargetsExactBounds) {
+  int64_t targets = ResampleSupportedTargets();
+  while (targets) {
+    const int64_t target = targets & -targets;
+    targets &= ~target;
+    SCOPED_TRACE(target);
+    const auto* table = GetResampleKernels(target);
+    ASSERT_NE(table, nullptr);
+    CheckSingleWindowPairs<uint8_t>(8, *table);
+    CheckSingleWindowPairs<uint16_t>(10, *table);
+    CheckSingleWindowPairs<uint16_t>(16, *table);
+  }
+}
 TEST(ResampleHighwayContract, HorizontalStrideFourFloatAllTargetsExactBoundsAndOrder) {
   int64_t targets = ResampleSupportedTargets();
   while (targets) {

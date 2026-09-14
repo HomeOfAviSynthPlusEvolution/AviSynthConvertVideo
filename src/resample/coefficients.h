@@ -29,6 +29,7 @@ struct HorizontalBlock {
 struct HorizontalPacking {
   size_t lanes = 0;
   bool has_stride_four = false;
+  bool has_long_stride_two = false;
   int single_window_pairs = 0;
   int dot_outputs = 0;
   std::vector<int16_t> dot_weights;

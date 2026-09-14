@@ -57,10 +57,15 @@ void PrepareHorizontal(Coefficients& plan, size_t lanes) {
       // At a two-sample stride, adjacent taps for all outputs form one
       // contiguous vector. Include the zero-weight mate of an odd last tap
       // in the load-bound proof; it must still be inside the source row.
-      stride_two = window && start == plan.offsets[first] &&
+      if (!window)
+        start = plan.offsets[first];
+      stride_two = 4 * lanes <= size_t(std::numeric_limits<int16_t>::max()) && start == plan.offsets[first] &&
                    int64_t(start) + int64_t(2 * lanes) + ((int64_t(taps) + 1) / 2) * 2 - 2 <= plan.source_size;
       for (size_t i = 0; i < lanes; ++i)
         stride_two = stride_two && plan.offsets[first + i] - start == int(2 * i);
+      if (!window && !stride_two)
+        start = 0;
+      packed.has_long_stride_two = packed.has_long_stride_two || (!window && stride_two);
     }
     packed.blocks.push_back({start, window, taps, packed.indices.size(), packed.pair_indices.size(), linear, sliding,
                              stride_two, stride_four});
@@ -74,13 +79,15 @@ void PrepareHorizontal(Coefficients& plan, size_t lanes) {
         else
           packed.integer_weights.push_back(plan.integers[index]);
       }
-    if (plan.bits_per_sample != 32 && window && 4 * lanes <= size_t(std::numeric_limits<int16_t>::max())) {
+    if (plan.bits_per_sample != 32 && (window || stride_two) &&
+        4 * lanes <= size_t(std::numeric_limits<int16_t>::max())) {
       for (int k = 0; k < taps; k += 2)
         for (size_t i = 0; i < lanes; ++i)
           for (int j = 0; j < 2; ++j) {
             const size_t position = first + i;
+            // Direct pair loads need no indices; long supports need not fit i16.
             packed.pair_indices.push_back(
-                int16_t(plan.offsets[position] + std::min(k + j, plan.sizes[position] - 1) - start));
+                stride_two ? 0 : int16_t(plan.offsets[position] + std::min(k + j, plan.sizes[position] - 1) - start));
             packed.pair_weights.push_back(
                 k + j < plan.sizes[position] ? plan.integers[position * plan.filter_size + k + j] : 0);
           }

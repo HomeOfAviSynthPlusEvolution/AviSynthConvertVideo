@@ -1,11 +1,11 @@
 # Video conversion benchmark results
 
-Current performance comparisons: **522 full-filter cases**, **584 kernel rows**, and **108 supplementary long-support resampling rows** (54 profiles × two targets). The supplementary set overlaps the filter audit. The tables include refreshed AMD measurements for **Floyd and integer/F32 horizontal resampling, including uniform short integer supports, and Ordered quantization and range mapping**. Unaffected paths retain their existing measurements. Missing upstream counterparts are explicitly marked, not counted as wins. Coverage is the measured workload set, not every possible parameter combination. Times are milliseconds.
+Current performance comparisons: **522 full-filter cases**, **584 kernel rows**, and **108 supplementary long-support resampling rows** (54 profiles × two targets). The supplementary set overlaps the filter audit. The tables include refreshed AMD measurements for **Floyd and integer/F32 horizontal resampling, including uniform short integer supports and long regular pair loads, and Ordered quantization and range mapping**. Unaffected paths retain their existing measurements. Missing upstream counterparts are explicitly marked, not counted as wins. Coverage is the measured workload set, not every possible parameter combination. Times are milliseconds.
 
 ## Reference and method
 
 - AMD refresh: 2026-09-14, Ryzen 9 7940H, Windows x64, clang-cl 22.1.3 Release, pinned to logical CPU 12 (0x1000). Each refresh uses one optimized module build for its affected paths. No concurrent build or test work during timing.
-- Affected module timings are replaced in place; unchanged paths retain their measurements. The low-depth Ordered refresh covers 2 full-filter cases (4 target measurements) and 8 kernel target rows. Its kernel harness retains the original deterministic input, exact pitches, three warmups and seven samples of ten calls. The Ordered range refresh covers 8 full-filter cases (16 target measurements) and 24 kernel target rows with the same harness. The uniform short-support refresh covers 64 full-filter cases (117 target measurements) and 60 kernel target rows. The fixed host source is `bda0aab8bd9b366da41e946d41236735bae839af`, matching the original harness integration. Source identities, binary hashes, raw observations and reproduction scripts are recorded in untracked `docs/PERFORMANCE-CURRENT-2026-09-14/` and `docs/PMU-NEXT-2026-09-14/`.
+- Affected module timings are replaced in place; unchanged paths retain their measurements. The low-depth Ordered refresh covers 2 full-filter cases (4 target measurements) and 8 kernel target rows. Its kernel harness retains the original deterministic input, exact pitches, three warmups and seven samples of ten calls. The Ordered range refresh covers 8 full-filter cases (16 target measurements) and 24 kernel target rows with the same harness. The long regular-pair refresh covers 4 full-filter cases (8 target measurements) and 24 supplementary target rows, with the original filter harness and current data replacing the affected rows. The regular short kernel profiles are unchanged. The uniform short-support refresh covers 64 full-filter cases (117 target measurements) and 60 kernel target rows. The fixed host source is `bda0aab8bd9b366da41e946d41236735bae839af`, matching the original harness integration. Source identities, binary hashes, raw observations and reproduction scripts are recorded in untracked `docs/PERFORMANCE-CURRENT-2026-09-14/` and `docs/PMU-NEXT-2026-09-14/`.
 - The U16 BGRA unpack alignment optimization applies only to AVX3_SPR. AMD AVX2/AVX3_ZEN4 unpack instructions are unchanged, so their existing rows remain current. Controlled-address AMD checks and the separate SPR PMU evidence are recorded in `docs/PMU-NEXT-2026-09-14/02-packed-alpha/`; server pipeline timings are not substituted into these AMD tables.
 - Upstream reference: `5c82777b374bdef16e13007a11e77d735ac1e4eb`. Its existing measurements are retained unchanged; no upstream code was timed during this refresh. Module and upstream values therefore come from separate sessions on the same AMD machine. Small differences are not established gains or regressions.
 - AVX2 uses SetMaxCPU("avx2") on the module DLL. Native measures the highest available production target, Highway **AVX3_ZEN4**, rather than choosing the fastest measured target. The upstream column uses its saved AVX512 result where implemented. Floyd remains the shared C implementation for both CPU settings.
@@ -29,7 +29,7 @@ Current performance comparisons: **522 full-filter cases**, **584 kernel rows**,
 | luma | 15 | 0.906 | 0.598–1.047 | 0.869 | 0.592–1.325 |
 | matrix-filter | 54 | 1.000 | 0.627–1.825 | 0.901 | 0.562–1.423 |
 | ordered | 16 | 0.970 | 0.306–1.330 | 0.876 | 0.249–1.097 |
-| resize | 144 | 1.001 | 0.274–2.981 | 0.875 | 0.386–1.663 |
+| resize | 144 | 0.997 | 0.274–2.981 | 0.865 | 0.386–1.296 |
 | resize-composed | 19 | 0.992 | 0.559–1.486 | 0.766 | 0.362–0.889 |
 | yuy2 | 11 | 0.847 | 0.202–1.218 | 0.829 | 0.211–1.114 |
 
@@ -578,12 +578,12 @@ Expand each family. CPU cells are **upstream ms / new ms / ratio**; low-work rat
 | resize-427 | Y32 | 1920×1080 | `src.SinPowerResize(960,540)` | 1.0324 / 1.3379 / 1.296 | 1.3493 / 1.2370 / 0.917 | False / False | 3 / 3 |
 | resize-428 | Y32 | 1920×1080 | `src.SinPowerResize(2880,1620)` | 5.6978 / 3.4024 / 0.597 | 2.9997 / 2.6589 / 0.886 | False / False | 3 / 3 |
 | resize-429 | Y32 | 1920×1080 | `src.SinPowerResize(960,1620)` | 2.0579 / 2.4820 / 1.206 | 2.7045 / 2.3134 / 0.855 | False / False | 3 / 3 |
-| resize-430 | Y8 | 1920×1080 | `src.SincLin2Resize(960,540)` | 2.3422 / 6.5797 / 2.809 | 2.6686 / 4.4383 / 1.663 | True / True | 3 / 3 |
+| resize-430 | Y8 | 1920×1080 | `src.SincLin2Resize(960,540)` | 2.3422 / 2.7254 / 1.164 | 2.6686 / 2.2061 / 0.827 | True / True | 3 / 3 |
 | resize-431 | Y8 | 1920×1080 | `src.SincLin2Resize(2880,1620)` | 6.1501 / 18.3307 / 2.981 | 7.1435 / 6.7783 / 0.949 | True / True | 3 / 3 |
-| resize-432 | Y8 | 1920×1080 | `src.SincLin2Resize(960,1620)` | 4.4813 / 11.1294 / 2.483 | 5.4823 / 7.7295 / 1.410 | True / True | 3 / 3 |
-| resize-433 | Y16 | 1920×1080 | `src.SincLin2Resize(960,540)` | 3.1909 / 5.7202 / 1.793 | 3.0745 / 4.4328 / 1.442 | True / True | 3 / 3 |
+| resize-432 | Y8 | 1920×1080 | `src.SincLin2Resize(960,1620)` | 4.4813 / 5.4308 / 1.212 | 5.4823 / 4.1762 / 0.762 | True / True | 3 / 3 |
+| resize-433 | Y16 | 1920×1080 | `src.SincLin2Resize(960,540)` | 3.1909 / 2.7056 / 0.848 | 3.0745 / 2.2782 / 0.741 | True / True | 3 / 3 |
 | resize-434 | Y16 | 1920×1080 | `src.SincLin2Resize(2880,1620)` | 7.0710 / 16.8101 / 2.377 | 7.4358 / 6.4249 / 0.864 | True / True | 3 / 3 |
-| resize-435 | Y16 | 1920×1080 | `src.SincLin2Resize(960,1620)` | 5.4226 / 9.8663 / 1.819 | 6.0324 / 7.5193 / 1.246 | True / True | 3 / 3 |
+| resize-435 | Y16 | 1920×1080 | `src.SincLin2Resize(960,1620)` | 5.4226 / 5.4255 / 1.001 | 6.0324 / 4.3683 / 0.724 | True / True | 3 / 3 |
 | resize-436 | Y32 | 1920×1080 | `src.SincLin2Resize(960,540)` | 5.3759 / 7.0704 / 1.315 | 5.1562 / 6.3934 / 1.240 | False / False | 3 / 3 |
 | resize-437 | Y32 | 1920×1080 | `src.SincLin2Resize(2880,1620)` | 11.0242 / 14.0389 / 1.273 | 10.7055 / 13.8793 / 1.296 | False / False | 3 / 3 |
 | resize-438 | Y32 | 1920×1080 | `src.SincLin2Resize(960,1620)` | 9.4673 / 12.2331 / 1.292 | 9.4550 / 11.3322 / 1.199 | False / False | 3 / 3 |
@@ -1311,72 +1311,72 @@ Current module timings for these full-filter profiles are compared with their sa
 | Y8-SincLin2Resize-3-V | native | 0.4309 | 0.3197 | 0.742 |
 | Y8-SincLin2Resize-3-HV | avx2 | 0.7660 | 0.9007 | 1.176 |
 | Y8-SincLin2Resize-3-HV | native | 0.5823 | 0.5221 | 0.897 |
-| Y8-SincLin2Resize-8-H | avx2 | 0.9747 | 2.5788 | 2.646 |
+| Y8-SincLin2Resize-8-H | avx2 | 0.9747 | 1.0944 | 1.123 |
 | Y8-SincLin2Resize-8-H | native | 0.8465 | 0.7735 | 0.914 |
 | Y8-SincLin2Resize-8-V | avx2 | 0.6917 | 0.9637 | 1.393 |
 | Y8-SincLin2Resize-8-V | native | 1.0854 | 0.7654 | 0.705 |
-| Y8-SincLin2Resize-8-HV | avx2 | 1.3233 | 3.0501 | 2.305 |
+| Y8-SincLin2Resize-8-HV | avx2 | 1.3233 | 1.5567 | 1.176 |
 | Y8-SincLin2Resize-8-HV | native | 1.4145 | 1.2066 | 0.853 |
-| Y8-SincLin2Resize-15-H | avx2 | 1.5956 | 4.9055 | 3.074 |
-| Y8-SincLin2Resize-15-H | native | 1.5523 | 3.7584 | 2.421 |
+| Y8-SincLin2Resize-15-H | avx2 | 1.5956 | 1.8336 | 1.149 |
+| Y8-SincLin2Resize-15-H | native | 1.5523 | 1.4487 | 0.933 |
 | Y8-SincLin2Resize-15-V | avx2 | 1.2961 | 1.7166 | 1.324 |
 | Y8-SincLin2Resize-15-V | native | 2.0214 | 1.4062 | 0.696 |
-| Y8-SincLin2Resize-15-HV | avx2 | 2.2622 | 6.4986 | 2.873 |
-| Y8-SincLin2Resize-15-HV | native | 2.5623 | 4.5143 | 1.762 |
+| Y8-SincLin2Resize-15-HV | avx2 | 2.2622 | 2.6910 | 1.190 |
+| Y8-SincLin2Resize-15-HV | native | 2.5623 | 2.1905 | 0.855 |
 | Y8-LanczosResize-3-H | avx2 | 0.6208 | 0.7030 | 1.132 |
 | Y8-LanczosResize-3-H | native | 0.3649 | 0.3558 | 0.975 |
 | Y8-LanczosResize-3-V | avx2 | 0.2944 | 0.3941 | 1.339 |
 | Y8-LanczosResize-3-V | native | 0.4250 | 0.3162 | 0.744 |
 | Y8-LanczosResize-3-HV | avx2 | 0.8326 | 0.8955 | 1.075 |
 | Y8-LanczosResize-3-HV | native | 0.5821 | 0.5273 | 0.906 |
-| Y8-LanczosResize-8-H | avx2 | 0.9732 | 2.5817 | 2.653 |
+| Y8-LanczosResize-8-H | avx2 | 0.9732 | 1.0907 | 1.121 |
 | Y8-LanczosResize-8-H | native | 0.8645 | 0.7481 | 0.865 |
 | Y8-LanczosResize-8-V | avx2 | 0.7154 | 0.9445 | 1.320 |
 | Y8-LanczosResize-8-V | native | 1.0852 | 0.7740 | 0.713 |
-| Y8-LanczosResize-8-HV | avx2 | 1.3237 | 3.0481 | 2.303 |
+| Y8-LanczosResize-8-HV | avx2 | 1.3237 | 1.5599 | 1.178 |
 | Y8-LanczosResize-8-HV | native | 1.3876 | 1.1670 | 0.841 |
-| Y8-LanczosResize-15-H | avx2 | 1.6049 | 5.6556 | 3.524 |
-| Y8-LanczosResize-15-H | native | 1.5330 | 3.7259 | 2.430 |
+| Y8-LanczosResize-15-H | avx2 | 1.6049 | 1.8272 | 1.139 |
+| Y8-LanczosResize-15-H | native | 1.5330 | 1.4366 | 0.937 |
 | Y8-LanczosResize-15-V | avx2 | 1.2662 | 1.7102 | 1.351 |
 | Y8-LanczosResize-15-V | native | 2.0136 | 1.3977 | 0.694 |
-| Y8-LanczosResize-15-HV | avx2 | 2.2671 | 6.4770 | 2.857 |
-| Y8-LanczosResize-15-HV | native | 2.5606 | 4.4601 | 1.742 |
+| Y8-LanczosResize-15-HV | avx2 | 2.2671 | 2.6893 | 1.186 |
+| Y8-LanczosResize-15-HV | native | 2.5606 | 2.2129 | 0.864 |
 | Y16-SincLin2Resize-3-H | avx2 | 0.7194 | 0.7158 | 0.995 |
 | Y16-SincLin2Resize-3-H | native | 0.4230 | 0.4636 | 1.096 |
 | Y16-SincLin2Resize-3-V | avx2 | 0.3549 | 0.3494 | 0.985 |
 | Y16-SincLin2Resize-3-V | native | 0.4028 | 0.2571 | 0.638 |
 | Y16-SincLin2Resize-3-HV | avx2 | 0.9732 | 0.9053 | 0.930 |
 | Y16-SincLin2Resize-3-HV | native | 0.6942 | 0.6307 | 0.909 |
-| Y16-SincLin2Resize-8-H | avx2 | 1.0374 | 2.6285 | 2.534 |
+| Y16-SincLin2Resize-8-H | avx2 | 1.0374 | 1.0981 | 1.059 |
 | Y16-SincLin2Resize-8-H | native | 1.0576 | 1.0366 | 0.980 |
 | Y16-SincLin2Resize-8-V | avx2 | 0.8906 | 0.8954 | 1.005 |
 | Y16-SincLin2Resize-8-V | native | 1.0850 | 0.6545 | 0.603 |
-| Y16-SincLin2Resize-8-HV | avx2 | 1.7066 | 3.0834 | 1.807 |
+| Y16-SincLin2Resize-8-HV | avx2 | 1.7066 | 1.5446 | 0.905 |
 | Y16-SincLin2Resize-8-HV | native | 1.7154 | 1.4396 | 0.839 |
-| Y16-SincLin2Resize-15-H | avx2 | 1.8558 | 4.9609 | 2.673 |
-| Y16-SincLin2Resize-15-H | native | 1.8629 | 3.8341 | 2.058 |
+| Y16-SincLin2Resize-15-H | avx2 | 1.8558 | 1.9033 | 1.026 |
+| Y16-SincLin2Resize-15-H | native | 1.8629 | 1.6369 | 0.879 |
 | Y16-SincLin2Resize-15-V | avx2 | 1.7412 | 1.5927 | 0.915 |
 | Y16-SincLin2Resize-15-V | native | 1.8987 | 1.1229 | 0.591 |
-| Y16-SincLin2Resize-15-HV | avx2 | 3.1242 | 5.7745 | 1.848 |
-| Y16-SincLin2Resize-15-HV | native | 2.9068 | 4.5601 | 1.569 |
+| Y16-SincLin2Resize-15-HV | avx2 | 3.1242 | 2.7418 | 0.878 |
+| Y16-SincLin2Resize-15-HV | native | 2.9068 | 2.3098 | 0.795 |
 | Y16-LanczosResize-3-H | avx2 | 0.7074 | 0.7128 | 1.008 |
 | Y16-LanczosResize-3-H | native | 0.4121 | 0.4698 | 1.140 |
 | Y16-LanczosResize-3-V | avx2 | 0.3526 | 0.3533 | 1.002 |
 | Y16-LanczosResize-3-V | native | 0.4036 | 0.2604 | 0.645 |
 | Y16-LanczosResize-3-HV | avx2 | 0.9781 | 0.9219 | 0.943 |
 | Y16-LanczosResize-3-HV | native | 0.6879 | 0.6218 | 0.904 |
-| Y16-LanczosResize-8-H | avx2 | 1.0487 | 2.6080 | 2.487 |
+| Y16-LanczosResize-8-H | avx2 | 1.0487 | 1.1054 | 1.054 |
 | Y16-LanczosResize-8-H | native | 1.0621 | 1.0247 | 0.965 |
 | Y16-LanczosResize-8-V | avx2 | 0.8713 | 0.8959 | 1.028 |
 | Y16-LanczosResize-8-V | native | 1.0199 | 0.6284 | 0.616 |
-| Y16-LanczosResize-8-HV | avx2 | 1.6875 | 3.0693 | 1.819 |
+| Y16-LanczosResize-8-HV | avx2 | 1.6875 | 1.5343 | 0.909 |
 | Y16-LanczosResize-8-HV | native | 1.6833 | 1.3810 | 0.820 |
-| Y16-LanczosResize-15-H | avx2 | 1.8398 | 4.9194 | 2.674 |
-| Y16-LanczosResize-15-H | native | 1.8073 | 3.8642 | 2.138 |
+| Y16-LanczosResize-15-H | avx2 | 1.8398 | 1.9092 | 1.038 |
+| Y16-LanczosResize-15-H | native | 1.8073 | 1.7115 | 0.947 |
 | Y16-LanczosResize-15-V | avx2 | 1.7906 | 1.6314 | 0.911 |
 | Y16-LanczosResize-15-V | native | 1.8915 | 1.1199 | 0.592 |
-| Y16-LanczosResize-15-HV | avx2 | 3.1242 | 5.7153 | 1.829 |
-| Y16-LanczosResize-15-HV | native | 2.9314 | 4.5393 | 1.548 |
+| Y16-LanczosResize-15-HV | avx2 | 3.1242 | 2.7134 | 0.868 |
+| Y16-LanczosResize-15-HV | native | 2.9314 | 2.3671 | 0.807 |
 | Y32-SincLin2Resize-3-H | avx2 | 1.0542 | 1.2423 | 1.178 |
 | Y32-SincLin2Resize-3-H | native | 1.0973 | 1.2172 | 1.109 |
 | Y32-SincLin2Resize-3-V | avx2 | 0.5230 | 0.5735 | 1.096 |

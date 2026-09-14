@@ -360,13 +360,14 @@ auto PairedHorizontalSum(D d, const resample::Coefficients& plan, const resample
   return hn::Add(hn::RearrangeToOddPlusEven(sum, odd), hn::Set(d, 1 << (shift - 1)));
 }
 
-template <class T, class D>
+template <bool long_pairs = false, class T, class D>
 auto PackedHorizontalSum(D d, const resample::Coefficients& plan, const resample::HorizontalBlock& block,
                          const T* source, int bias) {
   const hn::Rebind<int32_t, D> di;
   const size_t lanes = hn::Lanes(d);
   if constexpr (!std::is_same_v<T, float>) {
-    if (block.window_size && 4 * lanes <= size_t(std::numeric_limits<int16_t>::max()))
+    if ((block.window_size || (long_pairs && block.stride_two)) &&
+        4 * lanes <= size_t(std::numeric_limits<int16_t>::max()))
       return PairedHorizontalSum(d, plan, block, source, bias);
   }
   if constexpr (std::is_same_v<T, float>) {
@@ -467,7 +468,7 @@ void HorizontalLongInteger(D d, const resample::Coefficients& plan, const T* sou
   }
 }
 
-template <class T, int pairs = 0>
+template <class T, int pairs = 0, bool long_pairs = false>
 void HorizontalInteger(const resample::Coefficients& plan, vc_const_plane source, vc_plane destination, vc_rows rows,
                        int source_first, int destination_first) {
   const hn::ScalableTag<int32_t> d;
@@ -538,11 +539,12 @@ void HorizontalInteger(const resample::Coefficients& plan, vc_const_plane source
         continue;
       }
       if (plan.horizontal.lanes == lanes) {
-        if (!plan.horizontal.blocks[x / lanes].window_size) {
+        if (!plan.horizontal.blocks[x / lanes].window_size &&
+            !(long_pairs && plan.horizontal.blocks[x / lanes].stride_two)) {
           HorizontalLongInteger(d, plan, src, dst, x, lanes, bias);
           continue;
         }
-        auto sum = PackedHorizontalSum(d, plan, plan.horizontal.blocks[x / lanes], src, bias);
+        auto sum = PackedHorizontalSum<long_pairs>(d, plan, plan.horizontal.blocks[x / lanes], src, bias);
         sum = hn::ShiftRight<shift>(hn::Add(sum, hn::Set(d, bias << shift)));
         sum = LimitEffectiveBits<T>(d, sum, plan.bits_per_sample);
         hn::StoreU(hn::DemoteTo(ds, sum), ds, dst + x);
@@ -580,6 +582,9 @@ template <class T>
 void SelectHorizontalInteger(const resample::Coefficients& plan, vc_const_plane source, vc_plane destination,
                              vc_rows rows, int source_first, int destination_first) {
   const hn::ScalableTag<int32_t> d;
+  // Keep long-pair dispatch out of the existing short and nonregular loops.
+  if (plan.horizontal.lanes == hn::Lanes(d) && plan.horizontal.has_long_stride_two)
+    return HorizontalInteger<T, 0, true>(plan, source, destination, rows, source_first, destination_first);
   const int pairs = plan.horizontal.lanes == hn::Lanes(d) ? plan.horizontal.single_window_pairs : 0;
   switch (pairs) {
     case 1:

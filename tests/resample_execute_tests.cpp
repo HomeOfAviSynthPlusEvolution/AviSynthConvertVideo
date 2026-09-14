@@ -234,6 +234,67 @@ TEST(ResampleHighwayContract, HorizontalStrideTwoPairsAllTargetsExactBounds) {
   }
 }
 template <class T>
+void CheckLongStrideTwoPairs(int bits, const ResampleKernels& table) {
+  for (int taps : {33, 60, 61, 119, 239})
+    for (int tail : {0, 1}) {
+      const int width = int(3 * table.lanes) + tail, height = 3;
+      const int sw = 2 * (width - 1) + taps;
+      Coefficients plan{sw, width, bits, taps, taps, std::vector<int>(width), std::vector<int>(width, taps), {}, {}};
+      plan.integers.resize(size_t(width) * taps);
+      const int unit = 1 << (sizeof(T) == 1 ? 14 : 13);
+      plan.max_abs_sum = 0;
+      for (int x = 0; x < width; ++x) {
+        plan.offsets[x] = 2 * x;
+        int sum = 0, absolute = 0;
+        for (int k = 0; k < taps; ++k) {
+          const int weight = k == taps - 1 ? unit - sum : ((k + x) % 2 ? -13 : 19);
+          plan.integers[size_t(x) * taps + k] = int16_t(weight);
+          sum += weight;
+          absolute += std::abs(weight);
+        }
+        plan.max_abs_sum = std::max(plan.max_abs_sum, int64_t(absolute));
+      }
+      PrepareHorizontal(plan, table.lanes);
+      ASSERT_TRUE(plan.horizontal.blocks.front().stride_two);
+      if (taps >= 60)
+        ASSERT_EQ(plan.horizontal.blocks.front().window_size, 0);
+      // The zero-weight mate of an odd final tap may not read past the row.
+      if ((taps % 2) && !tail)
+        ASSERT_FALSE(plan.horizontal.blocks.back().stride_two);
+      for (const auto& block : plan.horizontal.blocks)
+        if (block.stride_two)
+          ASSERT_LE(int64_t(block.source_start) + int64_t(2 * table.lanes) + ((int64_t(block.taps) + 1) / 2) * 2 - 2,
+                    sw);
+      std::vector<T> input(size_t(sw) * height), expected(size_t(width) * height, T(19)), actual(expected);
+      for (size_t i = 0; i < input.size(); ++i)
+        input[i] = T((i * 9829) & ((1 << bits) - 1));
+      const vc_const_plane src{input.data() + size_t(sw) * (height - 1), -ptrdiff_t(sw * sizeof(T))};
+      const vc_plane ref{expected.data() + size_t(width) * (height - 1), -ptrdiff_t(width * sizeof(T))};
+      const vc_plane dst{actual.data() + size_t(width) * (height - 1), -ptrdiff_t(width * sizeof(T))};
+      const vc_rows rows{width, height, 1, height - 1};
+      ASSERT_EQ(ExecuteC(plan, Axis::Horizontal, src, ref, rows), VC_OK);
+      table.horizontal_integer(plan, src, dst, rows, 0, 0);
+      ASSERT_EQ(actual, expected) << "bits=" << bits << " taps=" << taps << " lanes=" << table.lanes;
+      plan.max_abs_sum = -1;
+      std::fill(actual.begin(), actual.end(), T(19));
+      table.horizontal_integer(plan, src, dst, rows, 0, 0);
+      ASSERT_EQ(actual, expected);
+    }
+}
+TEST(ResampleHighwayContract, HorizontalLongStrideTwoPairsAllTargetsExactBounds) {
+  int64_t targets = ResampleSupportedTargets();
+  while (targets) {
+    const int64_t target = targets & -targets;
+    targets &= ~target;
+    SCOPED_TRACE(target);
+    const auto* table = GetResampleKernels(target);
+    ASSERT_NE(table, nullptr);
+    CheckLongStrideTwoPairs<uint8_t>(8, *table);
+    CheckLongStrideTwoPairs<uint16_t>(10, *table);
+    CheckLongStrideTwoPairs<uint16_t>(16, *table);
+  }
+}
+template <class T>
 void CheckSingleWindowPairs(int bits, const ResampleKernels& table) {
   const int lanes = int(table.lanes), sw = 2 * lanes + 9, width = 3 * lanes + 1, height = 4;
   for (int taps = 1; taps <= std::min(9, 2 * lanes); ++taps) {

@@ -53,7 +53,13 @@ void UnpackBgr(vc_const_plane source, vc_rgb_planes destination, T fill, vc_rows
 
 template <class T, int Components>
 void PackBgr(vc_const_rgb_planes source, vc_plane destination, T fill, vc_rows rows) {
+#if HWY_TARGET == HWY_AVX3_SPR
+  // SPR measurements favor 64-byte output batches for four-component packing.
+  // Keep three-component packing at the full target width.
+  const hn::CappedTag<T, Components == 4 ? 16 / sizeof(T) : HWY_MAX_BYTES / sizeof(T)> d;
+#else
   const hn::ScalableTag<T> d;
+#endif
   const size_t lanes = hn::Lanes(d);
   const size_t width = static_cast<size_t>(rows.width);
   const size_t end = width - width % lanes;

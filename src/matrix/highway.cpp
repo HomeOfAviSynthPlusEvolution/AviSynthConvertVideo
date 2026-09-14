@@ -167,12 +167,26 @@ void MatrixPairs(const matrix::Config& config, const matrix::Coefficients& m,
         const auto b3 = MatrixPairUpper(d16, b_2, hn::Zero(d16));
         for (int c = 0; c < outputs; ++c) {
           const auto calculate = [&](auto p0, auto p1, auto p2, auto p3) HWY_ATTR {
+#if HWY_TARGET <= HWY_AVX3_DL
+            // FitsInt32 bounds the absolute bias plus all products, so starting
+            // each VNNI accumulation with the bias is exact at every step.
+            auto unused = hn::Zero(d32);
+            auto lo = hn::ReorderWidenMulAccumulate(d32, p0, VectorChannel(wbg_0, wbg_1, wbg_2, c),
+                                                    VectorChannel(biases_0, biases_1, biases_2, c), unused);
+            auto hi = hn::ReorderWidenMulAccumulate(d32, p1, VectorChannel(wbg_0, wbg_1, wbg_2, c),
+                                                    VectorChannel(biases_0, biases_1, biases_2, c), unused);
+            lo = hn::ReorderWidenMulAccumulate(d32, p2, VectorChannel(wrz_0, wrz_1, wrz_2, c), lo, unused);
+            hi = hn::ReorderWidenMulAccumulate(d32, p3, VectorChannel(wrz_0, wrz_1, wrz_2, c), hi, unused);
+            lo = hn::ShiftRightSame(lo, precision);
+            hi = hn::ShiftRightSame(hi, precision);
+#else
             auto lo = hn::Add(hn::WidenMulPairwiseAdd(d32, p0, VectorChannel(wbg_0, wbg_1, wbg_2, c)),
                               hn::WidenMulPairwiseAdd(d32, p2, VectorChannel(wrz_0, wrz_1, wrz_2, c)));
             auto hi = hn::Add(hn::WidenMulPairwiseAdd(d32, p1, VectorChannel(wbg_0, wbg_1, wbg_2, c)),
                               hn::WidenMulPairwiseAdd(d32, p3, VectorChannel(wrz_0, wrz_1, wrz_2, c)));
             lo = hn::ShiftRightSame(hn::Add(lo, VectorChannel(biases_0, biases_1, biases_2, c)), precision);
             hi = hn::ShiftRightSame(hn::Add(hi, VectorChannel(biases_0, biases_1, biases_2, c)), precision);
+#endif
             if constexpr (!folded_offsets) {
               lo = hn::Add(lo, VectorChannel(offsets_0, offsets_1, offsets_2, c));
               hi = hn::Add(hi, VectorChannel(offsets_0, offsets_1, offsets_2, c));
@@ -227,8 +241,9 @@ void MatrixPairs(const matrix::Config& config, const matrix::Coefficients& m,
   }
 }
 template <bool forward, int outputs = 3>
-void MatrixFloat(const matrix::Config& config, const matrix::Coefficients& m, const std::array<vc_const_plane, 3>& source,
-                 const std::array<vc_plane, 3>& destination, vc_rows rows) {
+void MatrixFloat(const matrix::Config& config, const matrix::Coefficients& m,
+                 const std::array<vc_const_plane, 3>& source, const std::array<vc_plane, 3>& destination,
+                 vc_rows rows) {
   const float weights[3][3] = {{m.y_b_f, forward ? m.y_g_f : m.u_b_f, forward ? m.y_r_f : m.v_b_f},
                                {forward ? m.u_b_f : m.y_g_f, m.u_g_f, forward ? m.u_r_f : m.v_g_f},
                                {forward ? m.v_b_f : m.y_r_f, forward ? m.v_g_f : m.u_r_f, m.v_r_f}};
@@ -281,8 +296,9 @@ void MatrixFloat(const matrix::Config& config, const matrix::Coefficients& m, co
       for (int c = 0; c < outputs; ++c) {
         const float sum = weights[c][0] * a + weights[c][1] * b + weights[c][2] * r;
         const float value = sum + (forward ? (c == 0 ? m.offset_y_f : 0.f) : m.offset_rgb_f);
-        dst[c][x] =
-            (outputs == 1 || config.preserve_float_range) ? value : std::clamp(value, forward && c > 0 ? -.5f : 0.f, forward && c > 0 ? .5f : 1.f);
+        dst[c][x] = (outputs == 1 || config.preserve_float_range)
+                        ? value
+                        : std::clamp(value, forward && c > 0 ? -.5f : 0.f, forward && c > 0 ? .5f : 1.f);
       }
     }
   }

@@ -2,6 +2,7 @@
 #ifndef VIDEO_CONVERT_RESAMPLE_COEFFICIENTS_H
 #define VIDEO_CONVERT_RESAMPLE_COEFFICIENTS_H
 #include "functions.h"
+#include "aligned_allocator.h"
 #include <cstddef>
 #include <cstdint>
 #include <vector>
@@ -40,7 +41,7 @@ struct HorizontalPacking {
   std::vector<HorizontalBlock> blocks;
   std::vector<int32_t> indices, integer_weights;
   std::vector<float> float_weights;
-  std::vector<int16_t> pair_indices, pair_weights;
+  std::vector<int16_t, AlignedAllocator<int16_t>> pair_indices, pair_weights;
 };
 
 // Private, unpadded mathematical plan. Coefficients for destination i begin at

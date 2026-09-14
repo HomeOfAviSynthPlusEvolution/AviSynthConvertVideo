@@ -411,6 +411,39 @@ TEST(ResampleHighwayContract, HorizontalSingleWindowPairsAllTargetsExactBounds) 
     CheckSingleWindowPairs<uint16_t>(16, *table);
   }
 }
+TEST(ResampleHighwayContract, RepeatedHorizontalCoefficientsKeepDistinctSourcesAndWeights) {
+  constexpr int source_width = 960, width = 1441, height = 3;
+  std::vector<uint16_t> source(source_width * height), expected(width * height, 19), actual(expected);
+  for (size_t i = 0; i < source.size(); ++i)
+    source[i] = uint16_t(i * 12983 + (i / 7) * 2789);
+  const vc_const_plane src{source.data() + source_width * (height - 1), -ptrdiff_t(source_width * sizeof(uint16_t))};
+  const vc_plane ref{expected.data() + width * (height - 1), -ptrdiff_t(width * sizeof(uint16_t))};
+  const vc_plane dst{actual.data() + width * (height - 1), -ptrdiff_t(width * sizeof(uint16_t))};
+  const vc_rows rows{width, height, 1, height - 1};
+  int64_t targets = ResampleSupportedTargets();
+  while (targets) {
+    const int64_t target = targets & -targets;
+    targets &= ~target;
+    SCOPED_TRACE(target);
+    const auto* table = GetResampleKernels(target);
+    ASSERT_NE(table, nullptr);
+    // The crop retains a repeated 3/2 phase despite the odd output width. One
+    // interior output then differs by just one coefficient unit from its peers.
+    auto plan = BuildCoefficients(Spline36Filter(), {source_width, width, 0, width * (2.0 / 3), 16});
+    const size_t changed = size_t(width / 2) * plan.filter_size;
+    ++plan.integers[changed];
+    --plan.integers[changed + 1];
+    plan.max_abs_sum += 2;
+    ASSERT_EQ(ExecuteC(plan, Axis::Horizontal, src, ref, rows), VC_OK);
+    for (int pass = 0; pass < 2; ++pass) {
+      PrepareHorizontal(plan, table->lanes);
+      const auto copied = plan;
+      std::fill(actual.begin(), actual.end(), 19);
+      table->horizontal_integer(copied, src, dst, rows, 0, 0);
+      EXPECT_EQ(actual, expected);
+    }
+  }
+}
 TEST(ResampleHighwayContract, HorizontalStrideFourFloatAllTargetsExactBoundsAndOrder) {
   int64_t targets = ResampleSupportedTargets();
   while (targets) {

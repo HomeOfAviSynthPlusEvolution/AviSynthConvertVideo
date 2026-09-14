@@ -2,8 +2,42 @@
 #include "coefficients.h"
 #include <algorithm>
 #include <limits>
+#include <map>
 #include <stdexcept>
+#include <string>
 namespace vc::resample {
+namespace {
+void CompactPairs(HorizontalPacking& packed) {
+  if (packed.pair_indices.empty() || packed.dot_outputs)
+    return;
+  decltype(packed.pair_indices) indices, weights;
+  std::vector<size_t> starts(packed.blocks.size());
+  std::map<std::string, size_t> unique;
+  for (size_t i = 0; i < packed.blocks.size(); ++i) {
+    const auto& block = packed.blocks[i];
+    if (!block.window_size && !block.stride_two && !block.single_sliding)
+      continue;
+    const size_t first = block.pair_start;
+    const size_t count = (size_t(block.taps) / 2 + block.taps % 2) * 2 * packed.lanes;
+    // Both relative indices and every coefficient must match exactly. Absolute
+    // source starts remain per block; no phase approximation or tap reordering.
+    std::string key(reinterpret_cast<const char*>(packed.pair_indices.data() + first), count * sizeof(int16_t));
+    key.append(reinterpret_cast<const char*>(packed.pair_weights.data() + first), count * sizeof(int16_t));
+    const auto entry = unique.emplace(std::move(key), indices.size());
+    starts[i] = entry.first->second;
+    if (entry.second) {
+      indices.insert(indices.end(), packed.pair_indices.begin() + first, packed.pair_indices.begin() + first + count);
+      weights.insert(weights.end(), packed.pair_weights.begin() + first, packed.pair_weights.begin() + first + count);
+    }
+  }
+  if (indices.size() == packed.pair_indices.size())
+    return;
+  for (size_t i = 0; i < packed.blocks.size(); ++i)
+    packed.blocks[i].pair_start = starts[i];
+  packed.pair_indices = std::move(indices);
+  packed.pair_weights = std::move(weights);
+}
+} // namespace
 void PrepareHorizontal(Coefficients& plan, size_t lanes) {
   if (lanes == 0 || lanes > size_t(std::numeric_limits<int>::max() / 4))
     throw std::invalid_argument("Invalid SIMD lane count");
@@ -179,6 +213,7 @@ void PrepareHorizontal(Coefficients& plan, size_t lanes) {
       packed.single_window_float_taps = float_taps;
     }
   }
+  CompactPairs(packed);
   plan.horizontal = std::move(packed);
 }
 } // namespace vc::resample

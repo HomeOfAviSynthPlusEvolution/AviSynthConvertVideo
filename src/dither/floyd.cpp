@@ -36,6 +36,7 @@
 #include "depth/transform.h"
 #include "layout/buffer.h"
 #include <algorithm>
+#include <array>
 #include <new>
 #include <vector>
 struct vc_floyd_context {
@@ -43,6 +44,7 @@ struct vc_floyd_context {
   vc::depth::Transform range;
   int width, height, next_row = 0, next_error = 0;
   std::vector<int> errors;
+  std::array<uint8_t, 256> range_u8{};
 };
 namespace {
 int FloorShift(int value, int shift) {
@@ -72,8 +74,12 @@ void Execute(vc_floyd_context& p, vc_const_plane source, vc_plane destination, v
     for (int x = begin; x != end; x += direction) {
       int value = src[x];
       if (c.source_full != c.destination_full) {
-        const float scaled = (float(value) - range.source_offset) * range.factor;
-        value = std::clamp(int(scaled + (range.destination_offset + .5f)), 0, source_max);
+        if constexpr (sizeof(S) == 1) {
+          value = p.range_u8[value];
+        } else {
+          const float scaled = (float(value) - range.source_offset) * range.factor;
+          value = std::clamp(int(scaled + (range.destination_offset + .5f)), 0, source_max);
+        }
       }
       int error = next_error;
       if constexpr (low)
@@ -128,6 +134,15 @@ int vc_floyd_create(const vc_floyd_config* config, int width, int height, vc_flo
     rc.destination_bits = c.source_bits;
     *output = new vc_floyd_context{*config, vc::depth::BuildTransform(rc),         width, height, 0,
                                    0,       std::vector<int>(size_t(width) + 2, 0)};
+    if (c.source_bits == 8 && c.source_full != c.destination_full) {
+      // Range conversion is independent of error diffusion. Cache its exact
+      // float rounding and clamp for every byte value outside the feedback loop.
+      auto& p = **output;
+      for (int value = 0; value < 256; ++value) {
+        const float scaled = (float(value) - p.range.source_offset) * p.range.factor;
+        p.range_u8[value] = uint8_t(std::clamp(int(scaled + (p.range.destination_offset + .5f)), 0, 255));
+      }
+    }
     return VC_OK;
   } catch (const std::bad_alloc&) {
     return VC_OUT_OF_MEMORY;

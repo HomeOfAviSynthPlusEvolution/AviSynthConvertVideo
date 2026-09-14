@@ -184,6 +184,51 @@ TEST(FloydArithmetic, MatchesMathematicalRoundingAtEveryQuantizationShift) {
   CheckQuantizationArithmetic<uint16_t, uint8_t>(16, 8);
   CheckQuantizationArithmetic<uint16_t, uint16_t>(16, 16);
 }
+TEST(FloydArithmetic, ByteRangeMappingMatchesSeparateFloatConversionForEveryCode) {
+  constexpr int w = 257, h = 5, pitch = w + 3;
+  for (int source_full : {0, 1})
+    for (int chroma : {0, 1})
+      for (int q = 1; q < 8; ++q) {
+        SCOPED_TRACE(testing::Message() << source_full << ", chroma=" << chroma << ", q=" << q);
+        vc_floyd_config c{{8, 8, source_full, 1 - source_full, chroma}, q};
+        vc_floyd_context *raw = nullptr, *reference_raw = nullptr;
+        ASSERT_EQ(vc_floyd_create(&c, w, h, &raw), VC_OK);
+        Plan context(raw, vc_floyd_destroy);
+        c.depth.source_full = c.depth.destination_full = 1;
+        ASSERT_EQ(vc_floyd_create(&c, w, h, &reference_raw), VC_OK);
+        Plan reference(reference_raw, vc_floyd_destroy);
+        std::vector<uint8_t> input(pitch * h, 0xab), mapped = input;
+        std::vector<uint8_t> expected(pitch * h, 0xcd), output = expected, reversed = expected;
+        const float limited_span = chroma ? 224.f : 219.f;
+        const float factor = source_full ? limited_span / 255.f : 255.f / limited_span;
+        const float source_offset = chroma ? 128.f : source_full ? 0.f : 16.f;
+        const float destination_offset = chroma ? 128.f : source_full ? 16.f : 0.f;
+        for (int y = 0; y < h; ++y)
+          for (int x = 0; x < w; ++x) {
+            input[y * pitch + x] = uint8_t(x + y * 43);
+            // Force the original two float operations, independent of the
+            // context's table construction and of compiler FMA settings.
+            volatile float scaled = (float(input[y * pitch + x]) - source_offset) * factor;
+            mapped[y * pitch + x] = uint8_t(std::clamp(int(scaled + (destination_offset + .5f)), 0, 255));
+          }
+        const auto original = input;
+        ASSERT_EQ(vc_floyd_execute(reference_raw, {mapped.data(), pitch}, {expected.data(), pitch}, {w, h, 0, h}),
+                  VC_OK);
+        ASSERT_EQ(vc_floyd_execute(raw, {input.data(), pitch}, {output.data(), pitch}, {w, h, 0, h}), VC_OK);
+        EXPECT_EQ(output, expected);
+        vc_floyd_reset(raw);
+        for (int y = 0; y < h; ++y)
+          std::copy_n(input.data() + y * pitch, w, mapped.data() + (h - 1 - y) * pitch);
+        for (int y = 0; y < h; ++y)
+          ASSERT_EQ(vc_floyd_execute(raw, {mapped.data() + (h - 1) * pitch, -pitch},
+                                     {reversed.data() + (h - 1) * pitch, -pitch}, {w, h, y, 1}),
+                    VC_OK);
+        for (int y = 0; y < h; ++y)
+          EXPECT_TRUE(std::equal(expected.data() + y * pitch, expected.data() + (y + 1) * pitch,
+                                 reversed.data() + (h - 1 - y) * pitch));
+        EXPECT_EQ(input, original);
+      }
+}
 TEST(FloydContract, InvalidCreationClearsOutput) {
   vc_floyd_config c{{16, 8, 1, 1, 0}, 8};
   vc_floyd_context* raw = reinterpret_cast<vc_floyd_context*>(1);

@@ -1,6 +1,6 @@
 # Video conversion benchmark results
 
-Current performance comparisons: **522 full-filter cases**, **592 kernel rows**, and **108 supplementary long-support resampling rows** (54 profiles × two targets). The supplementary set overlaps the filter audit. The tables include refreshed AMD measurements for **Floyd and integer/F32 horizontal resampling, including uniform short integer supports and long regular pair loads, paired F32 loads, single-vector float windows, long integer sliding pairs and fixed short F32 supports, Ordered quantization and range mapping, and U8 integer matrix accumulation, U8 depth range mapping, direct packed RGB repacking, YUY2 chroma neutralization and additional high-precision integer matrix coverage**. Unaffected paths retain their existing measurements. Missing upstream counterparts are explicitly marked, not counted as wins. Coverage is the measured workload set, not every possible parameter combination. Times are milliseconds.
+Current performance comparisons: **522 full-filter cases**, **592 kernel rows**, and **108 supplementary long-support resampling rows** (54 profiles × two targets). The supplementary set overlaps the filter audit. The tables include refreshed AMD measurements for **Floyd including cached U8 range conversion and integer/F32 horizontal resampling, including uniform short integer supports and long regular pair loads, paired F32 loads, single-vector float windows, long integer sliding pairs and fixed short F32 supports, Ordered quantization and range mapping, and U8 integer matrix accumulation, U8 depth range mapping, direct packed RGB repacking, YUY2 chroma neutralization and additional high-precision integer matrix coverage**. Unaffected paths retain their existing measurements. Missing upstream counterparts are explicitly marked, not counted as wins. Coverage is the measured workload set, not every possible parameter combination. Times are milliseconds.
 
 ## Reference and method
 
@@ -23,7 +23,7 @@ Current performance comparisons: **522 full-filter cases**, **592 kernel rows**,
 | chroma | 25 | 0.908 | 0.544–1.304 | 0.816 | 0.576–1.370 |
 | depth | 132 | 1.141 | 0.379–1.506 | 0.994 | 0.334–1.204 |
 | depth-alpha | 13 | 1.067 | 0.976–3.307 | 1.028 | 0.904–2.917 |
-| floyd | 17 | 1.068 | 0.962–1.262 | 1.035 | 0.944–1.209 |
+| floyd | 17 | 1.053 | 0.844–1.262 | 1.028 | 0.860–1.209 |
 | greyscale | 21 | 0.900 | 0.293–1.297 | 0.902 | 0.257–1.304 |
 | interlaced | 9 | 0.992 | 0.206–1.132 | 0.890 | 0.211–1.044 |
 | layout | 23 | 0.955 | 0.126–1.820 | 1.052 | 0.108–1.578 |
@@ -256,8 +256,8 @@ Expand each family. CPU cells are **upstream ms / new ms / ratio**; low-work rat
 | floyd-311 | Y16 | 1920×1080 | `src.ConvertBits(10,fulls=false,fulld=true,dither=1,dither_bits=10)` | 6.0377 / 7.4473 / 1.233 | 6.3431 / 7.4487 / 1.174 | True / True | 3 / 3 |
 | floyd-312 | Y16 | 1920×1080 | `src.ConvertBits(16,fulls=true,fulld=true,dither=1,dither_bits=10)` | 5.9955 / 5.7655 / 0.962 | 6.1339 / 5.8110 / 0.947 | True / True | 3 / 3 |
 | floyd-313 | Y16 | 1920×1080 | `src.ConvertBits(16,fulls=false,fulld=true,dither=1,dither_bits=10)` | 5.8914 / 7.4334 / 1.262 | 6.1708 / 7.4127 / 1.201 | True / True | 3 / 3 |
-| floyd-314 | Y8 | 1920×1080 | `src.ConvertBits(8,fulls=true,fulld=true,dither=1,dither_bits=5)` | 6.0797 / 5.9032 / 0.971 | 6.2431 / 5.8959 / 0.944 | True / True | 3 / 3 |
-| floyd-315 | Y8 | 1920×1080 | `src.ConvertBits(8,fulls=false,fulld=true,dither=1,dither_bits=5)` | 8.1021 / 9.2334 / 1.140 | 8.1141 / 9.2313 / 1.138 | True / True | 3 / 3 |
+| floyd-314 | Y8 | 1920×1080 | `src.ConvertBits(8,fulls=true,fulld=true,dither=1,dither_bits=5)` | 6.0797 / 6.0136 / 0.989 | 6.2431 / 6.0812 / 0.974 | True / True | 3 / 3 |
+| floyd-315 | Y8 | 1920×1080 | `src.ConvertBits(8,fulls=false,fulld=true,dither=1,dither_bits=5)` | 8.1021 / 6.8373 / 0.844 | 8.1141 / 6.9820 / 0.860 | True / True | 3 / 3 |
 | floyd-316 | Y10 | 1920×1080 | `src.ConvertBits(10,fulls=true,fulld=true,dither=1,dither_bits=3)` | 6.0278 / 5.9845 / 0.993 | 6.2032 / 6.0117 / 0.969 | True / True | 3 / 3 |
 | floyd-317 | Y10 | 1920×1080 | `src.ConvertBits(10,fulls=false,fulld=true,dither=1,dither_bits=3)` | 7.7917 / 9.5640 / 1.227 | 8.1557 / 9.4681 / 1.161 | True / True | 3 / 3 |
 | floyd-318 | YUV444P16 | 1920×1080 | `src.ConvertBits(8,fulls=true,fulld=true,dither=1,dither_bits=8)` | 16.6596 / 17.4370 / 1.047 | 17.0280 / 17.3366 / 1.018 | True / True | 3 / 3 |

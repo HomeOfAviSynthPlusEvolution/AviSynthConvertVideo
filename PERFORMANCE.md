@@ -6,6 +6,7 @@ Current performance comparisons: **522 full-filter cases**, **592 kernel rows**,
 
 - AMD refresh: 2026-09-14, Ryzen 9 7940H, Windows x64, clang-cl 22.1.3 Release, pinned to logical CPU 12 (0x1000). Each refresh uses one optimized module build for its affected paths. No concurrent build or test work during timing.
 - Affected timings are replaced in their existing rows using the original harness, deterministic input, pitches and statistics; unchanged paths retain their valid measurements. Full-filter observations use the original GetFrame harness and three rounds. Matrix, Depth and Ordered kernel observations retain three warmups and seven samples of ten calls; resampling uses its original axis, ratio and pipeline harnesses. The fixed host source is `bda0aab8bd9b366da41e946d41236735bae839af`. Source identities, binary hashes, raw observations, scope checks and reproduction scripts are recorded in untracked `docs/PERFORMANCE-CURRENT-2026-09-14/`, `docs/PMU-NEXT-2026-09-14/`, and `docs/PMU-INTERNAL-2026-09-14/`.
+- Final benchmark artifacts and timing logs are checked for diagnostic markers before publication. Restored sources are rebuilt with fresh timestamps; measured full-filter paths pass a clean native smoke run and exact C output checks.
 - The U16 BGRA unpack alignment optimization applies only to AVX3_SPR. AMD AVX2/AVX3_ZEN4 unpack instructions are unchanged, so their existing rows remain current. Controlled-address AMD checks and the separate SPR PMU evidence are recorded in `docs/PMU-NEXT-2026-09-14/02-packed-alpha/`; server pipeline timings are not substituted into these AMD tables.
 - The F32 three-plane matrix output alignment optimization also applies only to AVX3_SPR. It aligns the row body with a bounded partial first vector when all output planes have the same address phase. AMD AVX2/AVX3_ZEN4 retain their existing kernel loops and measurements; controlled-address comparisons and SPR PMU evidence are in `docs/PMU-INTERNAL-2026-09-14/02-MATRIX-REPORT.md`.
 - Upstream reference: `5c82777b374bdef16e13007a11e77d735ac1e4eb`. Its existing measurements are retained unchanged; no upstream code was timed during this refresh. Module and upstream values therefore come from separate sessions on the same AMD machine. Small differences are not established gains or regressions.
@@ -21,19 +22,19 @@ Current performance comparisons: **522 full-filter cases**, **592 kernel rows**,
 
 | Family | Nontrivial cases | AVX2 median | AVX2 range | Native median | Native range |
 |---|---|---|---|---|---|
-| chroma | 25 | 0.908 | 0.545–1.304 | 0.788 | 0.576–1.166 |
+| chroma | 25 | 0.908 | 0.542–1.304 | 0.812 | 0.576–1.101 |
 | depth | 132 | 1.141 | 0.379–1.506 | 0.994 | 0.334–1.204 |
 | depth-alpha | 13 | 1.067 | 0.976–3.307 | 1.028 | 0.904–2.917 |
 | floyd | 17 | 1.049 | 0.844–1.262 | 1.025 | 0.830–1.209 |
 | greyscale | 21 | 0.900 | 0.293–1.297 | 0.902 | 0.257–1.304 |
-| interlaced | 9 | 0.992 | 0.206–1.132 | 0.978 | 0.211–1.207 |
+| interlaced | 9 | 0.992 | 0.206–1.132 | 0.975 | 0.211–1.137 |
 | layout | 23 | 0.955 | 0.126–1.820 | 1.052 | 0.108–1.578 |
 | luma | 15 | 0.906 | 0.598–1.047 | 0.867 | 0.512–1.009 |
-| matrix-filter | 54 | 0.999 | 0.636–1.825 | 0.880 | 0.541–1.423 |
+| matrix-filter | 54 | 1.000 | 0.666–1.825 | 0.891 | 0.539–1.423 |
 | ordered | 16 | 0.970 | 0.306–1.330 | 0.876 | 0.249–1.097 |
-| resize | 144 | 0.972 | 0.274–1.824 | 0.866 | 0.398–1.306 |
-| resize-composed | 19 | 1.022 | 0.559–3.876 | 1.227 | 0.479–6.729 |
-| yuy2 | 11 | 0.847 | 0.202–1.218 | 0.829 | 0.211–1.042 |
+| resize | 144 | 0.961 | 0.274–1.609 | 0.800 | 0.408–1.136 |
+| resize-composed | 19 | 0.936 | 0.559–1.605 | 0.787 | 0.404–0.952 |
+| yuy2 | 11 | 0.847 | 0.202–1.218 | 0.829 | 0.211–1.131 |
 
 ## Complete full-filter comparisons
 
@@ -45,24 +46,24 @@ Expand each family. CPU cells are **upstream ms / new ms / ratio**; low-work rat
 | Case | Input | Size | Expression | AVX2: old / new / ratio | Native: old / new / ratio | Equal output | Observations AVX2 / native |
 |---|---|---|---|---|---|---|---|
 | chroma-108 | YV24 | 1920×1080 | `src.ConvertToYUV444(chromaresample="spline36")` | 0.0000 / 0.0001 / low-work | 0.0000 / 0.0001 / low-work | True / True | 3 / 3 |
-| chroma-109 | YV24 | 1920×1080 | `src.ConvertToYUV422(chromaresample="spline36")` | 1.4085 / 1.5152 / 1.076 | 1.0270 / 0.8285 / 0.807 | True / True | 3 / 3 |
-| chroma-110 | YV24 | 1920×1080 | `src.ConvertToYUV420(chromaresample="spline36")` | 1.6652 / 1.8906 / 1.135 | 1.4305 / 1.1360 / 0.794 | True / True | 3 / 3 |
-| chroma-111 | YV16 | 1920×1080 | `src.ConvertToYUV444(chromaresample="spline36")` | 3.0660 / 1.8760 / 0.612 | 1.2413 / 0.9168 / 0.739 | True / True | 3 / 3 |
+| chroma-109 | YV24 | 1920×1080 | `src.ConvertToYUV422(chromaresample="spline36")` | 1.4085 / 1.5152 / 1.076 | 1.0270 / 0.9198 / 0.896 | True / True | 3 / 3 |
+| chroma-110 | YV24 | 1920×1080 | `src.ConvertToYUV420(chromaresample="spline36")` | 1.6652 / 1.8906 / 1.135 | 1.4305 / 1.1765 / 0.822 | True / True | 3 / 3 |
+| chroma-111 | YV16 | 1920×1080 | `src.ConvertToYUV444(chromaresample="spline36")` | 3.0660 / 1.8459 / 0.602 | 1.2413 / 0.9725 / 0.783 | True / True | 3 / 3 |
 | chroma-112 | YV16 | 1920×1080 | `src.ConvertToYUV422(chromaresample="spline36")` | 0.0000 / 0.0001 / low-work | 0.0000 / 0.0001 / low-work | True / True | 3 / 3 |
 | chroma-113 | YV16 | 1920×1080 | `src.ConvertToYUV420(chromaresample="spline36")` | 0.3727 / 0.4630 / 1.242 | 0.5286 / 0.4165 / 0.788 | True / True | 3 / 3 |
-| chroma-114 | YV12 | 1920×1080 | `src.ConvertToYUV444(chromaresample="spline36")` | 2.2820 / 1.9416 / 0.851 | 1.5901 / 1.3133 / 0.826 | True / True | 3 / 3 |
+| chroma-114 | YV12 | 1920×1080 | `src.ConvertToYUV444(chromaresample="spline36")` | 2.2820 / 1.9686 / 0.863 | 1.5901 / 1.4027 / 0.882 | True / True | 3 / 3 |
 | chroma-115 | YV12 | 1920×1080 | `src.ConvertToYUV422(chromaresample="spline36")` | 0.4294 / 0.5601 / 1.304 | 0.5857 / 0.4959 / 0.847 | True / True | 3 / 3 |
 | chroma-116 | YV12 | 1920×1080 | `src.ConvertToYUV420(chromaresample="spline36")` | 0.0000 / 0.0001 / low-work | 0.0000 / 0.0001 / low-work | True / True | 3 / 3 |
-| chroma-117 | YV411 | 1920×1080 | `src.ConvertToYUV444(chromaresample="spline36")` | 3.3337 / 2.2426 / 0.673 | 1.2527 / 0.9192 / 0.734 | True / True | 3 / 3 |
-| chroma-118 | YV411 | 1920×1080 | `src.ConvertToYUV422(chromaresample="spline36")` | 1.7955 / 0.9786 / 0.545 | 0.6343 / 0.5013 / 0.790 | True / True | 3 / 3 |
-| chroma-119 | YV411 | 1920×1080 | `src.ConvertToYUV420(chromaresample="spline36")` | 2.0725 / 1.3424 / 0.648 | 1.0809 / 0.8193 / 0.758 | True / True | 3 / 3 |
+| chroma-117 | YV411 | 1920×1080 | `src.ConvertToYUV444(chromaresample="spline36")` | 3.3337 / 2.2472 / 0.674 | 1.2527 / 0.9778 / 0.781 | True / True | 3 / 3 |
+| chroma-118 | YV411 | 1920×1080 | `src.ConvertToYUV422(chromaresample="spline36")` | 1.7955 / 0.9731 / 0.542 | 0.6343 / 0.5557 / 0.876 | True / True | 3 / 3 |
+| chroma-119 | YV411 | 1920×1080 | `src.ConvertToYUV420(chromaresample="spline36")` | 2.0725 / 1.3805 / 0.666 | 1.0809 / 0.9005 / 0.833 | True / True | 3 / 3 |
 | chroma-120 | YUV444P16 | 1920×1080 | `src.ConvertToYUV444(chromaresample="spline36")` | 0.0000 / 0.0001 / low-work | 0.0000 / 0.0001 / low-work | True / True | 3 / 3 |
-| chroma-121 | YUV444P16 | 1920×1080 | `src.ConvertToYUV422(chromaresample="spline36")` | 1.8694 / 1.8408 / 0.985 | 1.7320 / 1.1875 / 0.686 | True / True | 3 / 3 |
-| chroma-122 | YUV444P16 | 1920×1080 | `src.ConvertToYUV420(chromaresample="spline36")` | 2.3940 / 2.2096 / 0.923 | 2.2615 / 1.5416 / 0.682 | True / True | 3 / 3 |
-| chroma-123 | YUV422P16 | 1920×1080 | `src.ConvertToYUV444(chromaresample="spline36")` | 3.5540 / 2.0505 / 0.577 | 1.4265 / 1.2561 / 0.881 | True / True | 3 / 3 |
+| chroma-121 | YUV444P16 | 1920×1080 | `src.ConvertToYUV422(chromaresample="spline36")` | 1.8694 / 1.8408 / 0.985 | 1.7320 / 1.3045 / 0.753 | True / True | 3 / 3 |
+| chroma-122 | YUV444P16 | 1920×1080 | `src.ConvertToYUV420(chromaresample="spline36")` | 2.3940 / 2.2096 / 0.923 | 2.2615 / 1.5334 / 0.678 | True / True | 3 / 3 |
+| chroma-123 | YUV422P16 | 1920×1080 | `src.ConvertToYUV444(chromaresample="spline36")` | 3.5540 / 2.2340 / 0.629 | 1.4265 / 1.3127 / 0.920 | True / True | 3 / 3 |
 | chroma-124 | YUV422P16 | 1920×1080 | `src.ConvertToYUV422(chromaresample="spline36")` | 0.0000 / 0.0001 / low-work | 0.0000 / 0.0001 / low-work | True / True | 3 / 3 |
 | chroma-125 | YUV422P16 | 1920×1080 | `src.ConvertToYUV420(chromaresample="spline36")` | 0.6135 / 0.5689 / 0.927 | 0.6715 / 0.4561 / 0.679 | True / True | 3 / 3 |
-| chroma-126 | YUV420P16 | 1920×1080 | `src.ConvertToYUV444(chromaresample="spline36")` | 2.9570 / 2.1235 / 0.718 | 1.9219 / 1.4913 / 0.776 | True / True | 3 / 3 |
+| chroma-126 | YUV420P16 | 1920×1080 | `src.ConvertToYUV444(chromaresample="spline36")` | 2.9570 / 2.3251 / 0.786 | 1.9219 / 1.5613 / 0.812 | True / True | 3 / 3 |
 | chroma-127 | YUV420P16 | 1920×1080 | `src.ConvertToYUV422(chromaresample="spline36")` | 0.7285 / 0.6562 / 0.901 | 0.6793 / 0.5726 / 0.843 | True / True | 3 / 3 |
 | chroma-128 | YUV420P16 | 1920×1080 | `src.ConvertToYUV420(chromaresample="spline36")` | 0.0000 / 0.0001 / low-work | 0.0000 / 0.0001 / low-work | True / True | 3 / 3 |
 | chroma-129 | YUV444PS | 1920×1080 | `src.ConvertToYUV444(chromaresample="spline36")` | 0.0000 / 0.0001 / low-work | 0.0000 / 0.0001 / low-work | True / True | 3 / 3 |
@@ -74,12 +75,12 @@ Expand each family. CPU cells are **upstream ms / new ms / ratio**; low-work rat
 | chroma-135 | YUV420PS | 1920×1080 | `src.ConvertToYUV444(chromaresample="spline36")` | 3.4057 / 3.5896 / 1.054 | 3.9281 / 2.9813 / 0.759 | False / False | 3 / 3 |
 | chroma-136 | YUV420PS | 1920×1080 | `src.ConvertToYUV422(chromaresample="spline36")` | 1.1525 / 1.3109 / 1.137 | 1.1508 / 1.2665 / 1.101 | False / False | 3 / 3 |
 | chroma-137 | YUV420PS | 1920×1080 | `src.ConvertToYUV420(chromaresample="spline36")` | 0.0000 / 0.0001 / low-work | 0.0000 / 0.0001 / low-work | True / True | 3 / 3 |
-| extra-044 | YUV420P10 | 1920×1080 | `src.ConvertToYUV444(chromaresample="lanczos")` | 2.8778 / 2.5798 / 0.896 | 1.7372 / 1.8175 / 1.046 | True / True | 3 / 3 |
+| extra-044 | YUV420P10 | 1920×1080 | `src.ConvertToYUV444(chromaresample="lanczos")` | 2.8778 / 2.4110 / 0.838 | 1.7372 / 1.6691 / 0.961 | True / True | 3 / 3 |
 | extra-045 | YUV420P10 | 1920×1080 | `src.ConvertToYUV420(chromaresample="bilinear")` | 0.0000 / 0.0001 / low-work | 0.0000 / 0.0001 / low-work | True / True | 3 / 3 |
-| extra-046 | YUV422P12 | 1920×1080 | `src.ConvertToYUV444(chromaresample="lanczos")` | 3.3453 / 2.5850 / 0.773 | 1.2608 / 1.4705 / 1.166 | True / True | 3 / 3 |
+| extra-046 | YUV422P12 | 1920×1080 | `src.ConvertToYUV444(chromaresample="lanczos")` | 3.3453 / 2.3003 / 0.688 | 1.2608 / 1.3277 / 1.053 | True / True | 3 / 3 |
 | extra-047 | YUV422P12 | 1920×1080 | `src.ConvertToYUV420(chromaresample="bilinear")` | 0.4055 / 0.3662 / 0.903 | 0.5115 / 0.3224 / 0.630 | True / True | 3 / 3 |
 | extra-048 | YUV444P14 | 1920×1080 | `src.ConvertToYUV444(chromaresample="lanczos")` | 0.0000 / 0.0001 / low-work | 0.0000 / 0.0001 / low-work | True / True | 3 / 3 |
-| extra-049 | YUV444P14 | 1920×1080 | `src.ConvertToYUV420(chromaresample="bilinear")` | 2.0774 / 1.5588 / 0.750 | 1.3794 / 1.1321 / 0.821 | True / True | 3 / 3 |
+| extra-049 | YUV444P14 | 1920×1080 | `src.ConvertToYUV420(chromaresample="bilinear")` | 2.0774 / 1.4108 / 0.679 | 1.3794 / 1.0721 / 0.777 | True / True | 3 / 3 |
 
 </details>
 
@@ -305,13 +306,13 @@ Expand each family. CPU cells are **upstream ms / new ms / ratio**; low-work rat
 |---|---|---|---|---|---|---|---|
 | extra-019 | YUY2 | 1920×1080 | `src.ConvertToYV12(interlaced=true)` | 2.6480 / 0.7098 / 0.268 | 2.6670 / 0.6776 / 0.254 | True / True | 3 / 3 |
 | extra-020 | YUY2 | 1920×1080 | `src.ConvertToYV16(interlaced=true)` | 0.4243 / 0.0875 / 0.206 | 0.4174 / 0.0881 / 0.211 | True / True | 3 / 3 |
-| extra-021 | YUY2 | 1920×1080 | `src.ConvertToRGB32(interlaced=true)` | 5.4152 / 3.8083 / 0.703 | 3.0095 / 2.9420 / 0.978 | False / False | 3 / 3 |
+| extra-021 | YUY2 | 1920×1080 | `src.ConvertToRGB32(interlaced=true)` | 5.4152 / 3.7794 / 0.698 | 3.0095 / 2.9335 / 0.975 | False / False | 3 / 3 |
 | extra-022 | YV12 | 1920×1080 | `src.ConvertToYV16(interlaced=true)` | 0.4757 / 0.4871 / 1.024 | 0.5115 / 0.4386 / 0.858 | True / True | 3 / 3 |
-| extra-023 | YV12 | 1920×1080 | `src.ConvertToRGB32(interlaced=true)` | 3.3230 / 3.4841 / 1.048 | 2.4924 / 2.8427 / 1.141 | False / False | 3 / 3 |
+| extra-023 | YV12 | 1920×1080 | `src.ConvertToRGB32(interlaced=true)` | 3.3230 / 3.4536 / 1.039 | 2.4924 / 2.8327 / 1.137 | False / False | 3 / 3 |
 | extra-024 | YV16 | 1920×1080 | `src.ConvertToYV12(interlaced=true)` | 0.3428 / 0.3880 / 1.132 | 0.4399 / 0.3518 / 0.800 | True / True | 3 / 3 |
-| extra-025 | YV16 | 1920×1080 | `src.ConvertToRGB32(interlaced=true)` | 3.6618 / 3.1316 / 0.855 | 1.8858 / 2.2767 / 1.207 | False / False | 3 / 3 |
-| extra-026 | RGB32 | 1920×1080 | `src.ConvertToYV12(interlaced=true)` | 3.3151 / 3.2873 / 0.992 | 2.3597 / 2.6052 / 1.104 | True / True | 3 / 3 |
-| extra-027 | RGB32 | 1920×1080 | `src.ConvertToYV16(interlaced=true)` | 2.8323 / 2.9047 / 1.026 | 1.9842 / 2.0530 / 1.035 | True / True | 3 / 3 |
+| extra-025 | YV16 | 1920×1080 | `src.ConvertToRGB32(interlaced=true)` | 3.6618 / 3.0619 / 0.836 | 1.8858 / 2.0656 / 1.095 | False / False | 3 / 3 |
+| extra-026 | RGB32 | 1920×1080 | `src.ConvertToYV12(interlaced=true)` | 3.3151 / 3.2873 / 0.992 | 2.3597 / 2.4496 / 1.038 | True / True | 3 / 3 |
+| extra-027 | RGB32 | 1920×1080 | `src.ConvertToYV16(interlaced=true)` | 2.8323 / 2.9047 / 1.026 | 1.9842 / 1.9873 / 1.002 | True / True | 3 / 3 |
 
 </details>
 
@@ -387,44 +388,44 @@ Expand each family. CPU cells are **upstream ms / new ms / ratio**; low-work rat
 | Case | Input | Size | Expression | AVX2: old / new / ratio | Native: old / new / ratio | Equal output | Observations AVX2 / native |
 |---|---|---|---|---|---|---|---|
 | matrix-filter-055 | RGB24 | 1920×1080 | `src.ConvertToYUV444(matrix="Rec709")` | 0.7446 / 0.8952 / 1.202 | 0.7461 / 0.6966 / 0.934 | True / True | 3 / 3 |
-| matrix-filter-056 | RGB24 | 1920×1080 | `src.ConvertToYUV422(matrix="Rec709")` | 2.2282 / 2.7471 / 1.233 | 1.6689 / 1.8065 / 1.082 | True / True | 3 / 3 |
-| matrix-filter-057 | RGB24 | 1920×1080 | `src.ConvertToYUV420(matrix="Rec709")` | 2.4129 / 3.0182 / 1.251 | 1.9184 / 1.9345 / 1.008 | True / True | 3 / 3 |
+| matrix-filter-056 | RGB24 | 1920×1080 | `src.ConvertToYUV422(matrix="Rec709")` | 2.2282 / 2.7471 / 1.233 | 1.6689 / 1.8549 / 1.111 | True / True | 3 / 3 |
+| matrix-filter-057 | RGB24 | 1920×1080 | `src.ConvertToYUV420(matrix="Rec709")` | 2.4129 / 3.0182 / 1.251 | 1.9184 / 2.0083 / 1.047 | True / True | 3 / 3 |
 | matrix-filter-058 | RGB32 | 1920×1080 | `src.ConvertToYUV444(matrix="Rec709")` | 1.3379 / 1.0579 / 0.791 | 1.2510 / 0.8798 / 0.703 | True / True | 3 / 3 |
-| matrix-filter-059 | RGB32 | 1920×1080 | `src.ConvertToYUV422(matrix="Rec709")` | 2.8288 / 2.9020 / 1.026 | 2.0732 / 1.8130 / 0.875 | True / True | 3 / 3 |
-| matrix-filter-060 | RGB32 | 1920×1080 | `src.ConvertToYUV420(matrix="Rec709")` | 2.9937 / 3.1589 / 1.055 | 2.4539 / 1.9881 / 0.810 | True / True | 3 / 3 |
+| matrix-filter-059 | RGB32 | 1920×1080 | `src.ConvertToYUV422(matrix="Rec709")` | 2.8288 / 2.9020 / 1.026 | 2.0732 / 2.0149 / 0.972 | True / True | 3 / 3 |
+| matrix-filter-060 | RGB32 | 1920×1080 | `src.ConvertToYUV420(matrix="Rec709")` | 2.9937 / 3.1589 / 1.055 | 2.4539 / 2.1712 / 0.885 | True / True | 3 / 3 |
 | matrix-filter-061 | RGB48 | 1920×1080 | `src.ConvertToYUV444(matrix="Rec709")` | 1.7886 / 2.0014 / 1.119 | 1.7760 / 1.8215 / 1.026 | False / False | 3 / 3 |
-| matrix-filter-062 | RGB48 | 1920×1080 | `src.ConvertToYUV422(matrix="Rec709")` | 3.5707 / 4.0334 / 1.130 | 4.0377 / 2.9974 / 0.742 | False / False | 3 / 3 |
-| matrix-filter-063 | RGB48 | 1920×1080 | `src.ConvertToYUV420(matrix="Rec709")` | 3.9283 / 4.3152 / 1.098 | 4.4995 / 3.0651 / 0.681 | False / False | 3 / 3 |
+| matrix-filter-062 | RGB48 | 1920×1080 | `src.ConvertToYUV422(matrix="Rec709")` | 3.5707 / 4.0334 / 1.130 | 4.0377 / 3.0712 / 0.761 | False / False | 3 / 3 |
+| matrix-filter-063 | RGB48 | 1920×1080 | `src.ConvertToYUV420(matrix="Rec709")` | 3.9283 / 4.3152 / 1.098 | 4.4995 / 3.4103 / 0.758 | False / False | 3 / 3 |
 | matrix-filter-064 | RGB64 | 1920×1080 | `src.ConvertToYUV444(matrix="Rec709")` | 2.4155 / 2.2851 / 0.946 | 2.2413 / 1.9031 / 0.849 | False / False | 3 / 3 |
-| matrix-filter-065 | RGB64 | 1920×1080 | `src.ConvertToYUV422(matrix="Rec709")` | 4.2674 / 4.1538 / 0.973 | 4.5671 / 2.9397 / 0.644 | False / False | 3 / 3 |
-| matrix-filter-066 | RGB64 | 1920×1080 | `src.ConvertToYUV420(matrix="Rec709")` | 4.7095 / 4.5070 / 0.957 | 5.0869 / 3.3995 / 0.668 | False / False | 3 / 3 |
+| matrix-filter-065 | RGB64 | 1920×1080 | `src.ConvertToYUV422(matrix="Rec709")` | 4.2674 / 4.1538 / 0.973 | 4.5671 / 3.1067 / 0.680 | False / False | 3 / 3 |
+| matrix-filter-066 | RGB64 | 1920×1080 | `src.ConvertToYUV420(matrix="Rec709")` | 4.7095 / 4.5070 / 0.957 | 5.0869 / 3.3210 / 0.653 | False / False | 3 / 3 |
 | matrix-filter-067 | RGBP8 | 1920×1080 | `src.ConvertToYUV444(matrix="Rec709")` | 0.4927 / 0.4560 / 0.926 | 0.5091 / 0.3951 / 0.776 | True / True | 3 / 3 |
-| matrix-filter-068 | RGBP8 | 1920×1080 | `src.ConvertToYUV422(matrix="Rec709")` | 1.9739 / 2.0945 / 1.061 | 1.3964 / 1.3099 / 0.938 | True / True | 3 / 3 |
-| matrix-filter-069 | RGBP8 | 1920×1080 | `src.ConvertToYUV420(matrix="Rec709")` | 2.2058 / 2.3589 / 1.069 | 1.6958 / 1.4182 / 0.836 | True / True | 3 / 3 |
+| matrix-filter-068 | RGBP8 | 1920×1080 | `src.ConvertToYUV422(matrix="Rec709")` | 1.9739 / 2.0945 / 1.061 | 1.3964 / 1.2700 / 0.909 | True / True | 3 / 3 |
+| matrix-filter-069 | RGBP8 | 1920×1080 | `src.ConvertToYUV420(matrix="Rec709")` | 2.2058 / 2.3589 / 1.069 | 1.6958 / 1.4508 / 0.856 | True / True | 3 / 3 |
 | matrix-filter-070 | RGBP10 | 1920×1080 | `src.ConvertToYUV444(matrix="Rec709")` | 0.7785 / 0.7932 / 1.019 | 0.8383 / 0.7377 / 0.880 | True / True | 3 / 3 |
-| matrix-filter-071 | RGBP10 | 1920×1080 | `src.ConvertToYUV422(matrix="Rec709")` | 2.6662 / 2.8375 / 1.064 | 2.0176 / 1.8683 / 0.926 | True / True | 3 / 3 |
-| matrix-filter-072 | RGBP10 | 1920×1080 | `src.ConvertToYUV420(matrix="Rec709")` | 3.0362 / 3.1939 / 1.052 | 2.4305 / 2.1571 / 0.888 | True / True | 3 / 3 |
+| matrix-filter-071 | RGBP10 | 1920×1080 | `src.ConvertToYUV422(matrix="Rec709")` | 2.6662 / 2.8375 / 1.064 | 2.0176 / 1.9599 / 0.971 | True / True | 3 / 3 |
+| matrix-filter-072 | RGBP10 | 1920×1080 | `src.ConvertToYUV420(matrix="Rec709")` | 3.0362 / 3.1939 / 1.052 | 2.4305 / 2.2186 / 0.913 | True / True | 3 / 3 |
 | matrix-filter-073 | RGBP12 | 1920×1080 | `src.ConvertToYUV444(matrix="Rec709")` | 0.7899 / 0.7692 / 0.974 | 0.7947 / 0.6985 / 0.879 | False / False | 3 / 3 |
-| matrix-filter-074 | RGBP12 | 1920×1080 | `src.ConvertToYUV422(matrix="Rec709")` | 2.6362 / 2.7944 / 1.060 | 1.9698 / 1.8137 / 0.921 | False / False | 3 / 3 |
-| matrix-filter-075 | RGBP12 | 1920×1080 | `src.ConvertToYUV420(matrix="Rec709")` | 3.0954 / 3.1049 / 1.003 | 2.4391 / 2.0990 / 0.861 | False / False | 3 / 3 |
+| matrix-filter-074 | RGBP12 | 1920×1080 | `src.ConvertToYUV422(matrix="Rec709")` | 2.6362 / 2.7944 / 1.060 | 1.9698 / 1.9325 / 0.981 | False / False | 3 / 3 |
+| matrix-filter-075 | RGBP12 | 1920×1080 | `src.ConvertToYUV420(matrix="Rec709")` | 3.0954 / 3.1049 / 1.003 | 2.4391 / 2.1686 / 0.889 | False / False | 3 / 3 |
 | matrix-filter-076 | RGBP14 | 1920×1080 | `src.ConvertToYUV444(matrix="Rec709")` | 0.7645 / 0.7501 / 0.981 | 0.8089 / 0.7091 / 0.877 | False / False | 3 / 3 |
-| matrix-filter-077 | RGBP14 | 1920×1080 | `src.ConvertToYUV422(matrix="Rec709")` | 2.6003 / 2.8330 / 1.089 | 2.0159 / 1.8752 / 0.930 | False / False | 3 / 3 |
-| matrix-filter-078 | RGBP14 | 1920×1080 | `src.ConvertToYUV420(matrix="Rec709")` | 2.9920 / 3.1179 / 1.042 | 2.4101 / 2.1813 / 0.905 | False / False | 3 / 3 |
+| matrix-filter-077 | RGBP14 | 1920×1080 | `src.ConvertToYUV422(matrix="Rec709")` | 2.6003 / 2.8330 / 1.089 | 2.0159 / 1.9721 / 0.978 | False / False | 3 / 3 |
+| matrix-filter-078 | RGBP14 | 1920×1080 | `src.ConvertToYUV420(matrix="Rec709")` | 2.9920 / 3.1179 / 1.042 | 2.4101 / 2.1690 / 0.900 | False / False | 3 / 3 |
 | matrix-filter-079 | RGBP16 | 1920×1080 | `src.ConvertToYUV444(matrix="Rec709")` | 0.8890 / 0.7154 / 0.805 | 0.9765 / 0.6646 / 0.681 | False / False | 3 / 3 |
-| matrix-filter-080 | RGBP16 | 1920×1080 | `src.ConvertToYUV422(matrix="Rec709")` | 3.3444 / 2.6636 / 0.796 | 3.3373 / 1.8194 / 0.545 | False / False | 3 / 3 |
-| matrix-filter-081 | RGBP16 | 1920×1080 | `src.ConvertToYUV420(matrix="Rec709")` | 3.4758 / 2.9587 / 0.851 | 3.9150 / 2.1195 / 0.541 | False / False | 3 / 3 |
+| matrix-filter-080 | RGBP16 | 1920×1080 | `src.ConvertToYUV422(matrix="Rec709")` | 3.3444 / 2.6636 / 0.796 | 3.3373 / 1.8996 / 0.569 | False / False | 3 / 3 |
+| matrix-filter-081 | RGBP16 | 1920×1080 | `src.ConvertToYUV420(matrix="Rec709")` | 3.4758 / 2.9587 / 0.851 | 3.9150 / 2.1117 / 0.539 | False / False | 3 / 3 |
 | matrix-filter-082 | RGBPS | 1920×1080 | `src.ConvertToYUV444(matrix="Rec709")` | 1.4842 / 1.6482 / 1.110 | 1.5691 / 1.5142 / 0.965 | False / False | 3 / 3 |
 | matrix-filter-083 | RGBPS | 1920×1080 | `src.ConvertToYUV422(matrix="Rec709")` | 4.0324 / 4.0152 / 0.996 | 5.0861 / 3.8054 / 0.748 | False / False | 3 / 3 |
 | matrix-filter-084 | RGBPS | 1920×1080 | `src.ConvertToYUV420(matrix="Rec709")` | 4.4318 / 4.4991 / 1.015 | 5.2850 / 4.1301 / 0.781 | False / False | 3 / 3 |
 | matrix-filter-085 | RGBAP16 | 1920×1080 | `src.ConvertToYUV444(matrix="Rec709")` | 1.0853 / 0.8701 / 0.802 | 1.1031 / 0.8521 / 0.772 | False / False | 3 / 3 |
-| matrix-filter-086 | RGBAP16 | 1920×1080 | `src.ConvertToYUV422(matrix="Rec709")` | 3.2149 / 3.0386 / 0.945 | 3.6654 / 2.1247 / 0.580 | False / False | 3 / 3 |
-| matrix-filter-087 | RGBAP16 | 1920×1080 | `src.ConvertToYUV420(matrix="Rec709")` | 3.5749 / 3.2706 / 0.915 | 4.2971 / 2.3883 / 0.556 | False / False | 3 / 3 |
+| matrix-filter-086 | RGBAP16 | 1920×1080 | `src.ConvertToYUV422(matrix="Rec709")` | 3.2149 / 3.0386 / 0.945 | 3.6654 / 2.2427 / 0.612 | False / False | 3 / 3 |
+| matrix-filter-087 | RGBAP16 | 1920×1080 | `src.ConvertToYUV420(matrix="Rec709")` | 3.5749 / 3.2706 / 0.915 | 4.2971 / 2.6401 / 0.614 | False / False | 3 / 3 |
 | matrix-filter-088 | YV24 | 1920×1080 | `src.ConvertToPlanarRGB(matrix="Rec709")` | 0.4726 / 0.4548 / 0.962 | 0.5029 / 0.3929 / 0.781 | False / False | 3 / 3 |
 | matrix-filter-089 | YV24 | 1920×1080 | `src.ConvertToRGB32(matrix="Rec709")` | 0.8788 / 1.1174 / 1.271 | 0.8875 / 0.7839 / 0.883 | False / False | 3 / 3 |
-| matrix-filter-090 | YV16 | 1920×1080 | `src.ConvertToPlanarRGB(matrix="Rec709")` | 3.1763 / 2.0207 / 0.636 | 1.4663 / 1.2448 / 0.849 | False / False | 3 / 3 |
-| matrix-filter-091 | YV16 | 1920×1080 | `src.ConvertToRGB32(matrix="Rec709")` | 3.6093 / 2.7720 / 0.768 | 1.8460 / 2.1046 / 1.140 | False / False | 3 / 3 |
-| matrix-filter-092 | YV12 | 1920×1080 | `src.ConvertToPlanarRGB(matrix="Rec709")` | 2.4820 / 2.1037 / 0.848 | 1.7954 / 1.5267 / 0.850 | False / False | 3 / 3 |
-| matrix-filter-093 | YV12 | 1920×1080 | `src.ConvertToRGB32(matrix="Rec709")` | 2.8661 / 2.8718 / 1.002 | 2.1703 / 2.2735 / 1.048 | False / False | 3 / 3 |
+| matrix-filter-090 | YV16 | 1920×1080 | `src.ConvertToPlanarRGB(matrix="Rec709")` | 3.1763 / 2.1147 / 0.666 | 1.4663 / 1.3081 / 0.892 | False / False | 3 / 3 |
+| matrix-filter-091 | YV16 | 1920×1080 | `src.ConvertToRGB32(matrix="Rec709")` | 3.6093 / 2.9314 / 0.812 | 1.8460 / 2.1544 / 1.167 | False / False | 3 / 3 |
+| matrix-filter-092 | YV12 | 1920×1080 | `src.ConvertToPlanarRGB(matrix="Rec709")` | 2.4820 / 2.1918 / 0.883 | 1.7954 / 1.5427 / 0.859 | False / False | 3 / 3 |
+| matrix-filter-093 | YV12 | 1920×1080 | `src.ConvertToRGB32(matrix="Rec709")` | 2.8661 / 2.9520 / 1.030 | 2.1703 / 2.3713 / 1.093 | False / False | 3 / 3 |
 | matrix-filter-094 | YUV444P10 | 1920×1080 | `src.ConvertToPlanarRGB(matrix="Rec709")` | 0.7423 / 0.7319 / 0.986 | 0.7860 / 0.6845 / 0.871 | False / False | 3 / 3 |
 | matrix-filter-095 | YUV444P10 | 1920×1080 | `src.ConvertToRGB64(matrix="Rec709")` | 2.4399 / 2.9178 / 1.196 | 2.4365 / 3.0416 / 1.248 | False / False | 3 / 3 |
 | matrix-filter-096 | YUV444P12 | 1920×1080 | `src.ConvertToPlanarRGB(matrix="Rec709")` | 0.7524 / 0.7196 / 0.956 | 0.7875 / 0.7127 / 0.905 | False / False | 3 / 3 |
@@ -435,11 +436,11 @@ Expand each family. CPU cells are **upstream ms / new ms / ratio**; low-work rat
 | matrix-filter-101 | YUV444P16 | 1920×1080 | `src.ConvertToRGB64(matrix="Rec709")` | 1.9779 / 1.9253 / 0.973 | 2.0263 / 1.8620 / 0.919 | False / False | 3 / 3 |
 | matrix-filter-102 | YUV444PS | 1920×1080 | `src.ConvertToPlanarRGB(matrix="Rec709")` | 1.4314 / 1.6506 / 1.153 | 1.5718 / 1.5149 / 0.964 | False / False | 3 / 3 |
 | matrix-filter-103 | YUV444PS | 1920×1080 | `src.ConvertToRGB64(matrix="Rec709")` | 2.6645 / 4.8633 / 1.825 | 3.2910 / 4.6822 / 1.423 | False / False | 3 / 3 |
-| matrix-filter-104 | YUV420P16 | 1920×1080 | `src.ConvertToPlanarRGB(matrix="Rec709")` | 3.4421 / 2.6853 / 0.780 | 2.5429 / 2.2704 / 0.893 | False / False | 3 / 3 |
-| matrix-filter-105 | YUV420P16 | 1920×1080 | `src.ConvertToRGB64(matrix="Rec709")` | 4.6571 / 3.9793 / 0.854 | 3.8199 / 3.5361 / 0.926 | False / False | 3 / 3 |
+| matrix-filter-104 | YUV420P16 | 1920×1080 | `src.ConvertToPlanarRGB(matrix="Rec709")` | 3.4421 / 2.8835 / 0.838 | 2.5429 / 2.2872 / 0.899 | False / False | 3 / 3 |
+| matrix-filter-105 | YUV420P16 | 1920×1080 | `src.ConvertToRGB64(matrix="Rec709")` | 4.6571 / 4.0766 / 0.875 | 3.8199 / 3.7809 / 0.990 | False / False | 3 / 3 |
 | matrix-filter-106 | YUV420PS | 1920×1080 | `src.ConvertToPlanarRGB(matrix="Rec709")` | 6.5137 / 4.8609 / 0.746 | 4.5857 / 4.5892 / 1.001 | False / False | 3 / 3 |
 | matrix-filter-107 | YUV420PS | 1920×1080 | `src.ConvertToRGB64(matrix="Rec709")` | 7.6010 / 8.0892 / 1.064 | 6.3003 / 7.5851 / 1.204 | False / False | 3 / 3 |
-| matrix-filter-469 | RGB32 | 3840×2160 | `src.ConvertToYUV420()` | 12.0970 / 12.0585 / 0.997 | 10.8731 / 8.6887 / 0.799 | True / True | 3 / 3 |
+| matrix-filter-469 | RGB32 | 3840×2160 | `src.ConvertToYUV420()` | 12.0970 / 12.0585 / 0.997 | 10.8731 / 8.2049 / 0.755 | True / True | 3 / 3 |
 
 </details>
 
@@ -472,150 +473,150 @@ Expand each family. CPU cells are **upstream ms / new ms / ratio**; low-work rat
 
 | Case | Input | Size | Expression | AVX2: old / new / ratio | Native: old / new / ratio | Equal output | Observations AVX2 / native |
 |---|---|---|---|---|---|---|---|
-| resize-322 | Y8 | 1920×1080 | `src.PointResize(960,540)` | 0.6798 / 0.3354 / 0.493 | 0.2951 / 0.2360 / 0.800 | True / True | 3 / 3 |
-| resize-323 | Y8 | 1920×1080 | `src.PointResize(2880,1620)` | 2.2321 / 1.0505 / 0.471 | 0.7303 / 0.6702 / 0.918 | True / True | 3 / 3 |
-| resize-324 | Y8 | 1920×1080 | `src.PointResize(960,1620)` | 1.1824 / 0.6989 / 0.591 | 0.5030 / 0.5115 / 1.017 | True / True | 3 / 3 |
-| resize-325 | Y16 | 1920×1080 | `src.PointResize(960,540)` | 0.8958 / 0.3720 / 0.415 | 0.4511 / 0.2574 / 0.571 | True / True | 3 / 3 |
-| resize-326 | Y16 | 1920×1080 | `src.PointResize(2880,1620)` | 2.5130 / 1.0582 / 0.421 | 1.7048 / 0.7692 / 0.451 | True / True | 3 / 3 |
-| resize-327 | Y16 | 1920×1080 | `src.PointResize(960,1620)` | 1.3797 / 0.7577 / 0.549 | 0.7212 / 0.5709 / 0.792 | True / True | 3 / 3 |
+| resize-322 | Y8 | 1920×1080 | `src.PointResize(960,540)` | 0.6798 / 0.3589 / 0.528 | 0.2951 / 0.2395 / 0.812 | True / True | 3 / 3 |
+| resize-323 | Y8 | 1920×1080 | `src.PointResize(2880,1620)` | 2.2321 / 1.1475 / 0.514 | 0.7303 / 0.7130 / 0.976 | True / True | 3 / 3 |
+| resize-324 | Y8 | 1920×1080 | `src.PointResize(960,1620)` | 1.1824 / 0.6840 / 0.578 | 0.5030 / 0.5175 / 1.029 | True / True | 3 / 3 |
+| resize-325 | Y16 | 1920×1080 | `src.PointResize(960,540)` | 0.8958 / 0.3331 / 0.372 | 0.4511 / 0.2448 / 0.543 | True / True | 3 / 3 |
+| resize-326 | Y16 | 1920×1080 | `src.PointResize(2880,1620)` | 2.5130 / 1.1753 / 0.468 | 1.7048 / 0.7654 / 0.449 | True / True | 3 / 3 |
+| resize-327 | Y16 | 1920×1080 | `src.PointResize(960,1620)` | 1.3797 / 0.7612 / 0.552 | 0.7212 / 0.5739 / 0.796 | True / True | 3 / 3 |
 | resize-328 | Y32 | 1920×1080 | `src.PointResize(960,540)` | 1.7089 / 0.4675 / 0.274 | 1.0368 / 0.4495 / 0.434 | True / True | 3 / 3 |
 | resize-329 | Y32 | 1920×1080 | `src.PointResize(2880,1620)` | 5.1167 / 1.8224 / 0.356 | 2.4421 / 1.6755 / 0.686 | True / True | 3 / 3 |
 | resize-330 | Y32 | 1920×1080 | `src.PointResize(960,1620)` | 2.8796 / 0.8734 / 0.303 | 2.1093 / 0.8607 / 0.408 | True / True | 3 / 3 |
-| resize-331 | Y8 | 1920×1080 | `src.BilinearResize(960,540)` | 0.6852 / 0.4455 / 0.650 | 0.3395 / 0.2945 / 0.868 | True / True | 3 / 3 |
-| resize-332 | Y8 | 1920×1080 | `src.BilinearResize(2880,1620)` | 2.2803 / 0.8393 / 0.368 | 0.9274 / 0.4923 / 0.531 | True / True | 3 / 3 |
-| resize-333 | Y8 | 1920×1080 | `src.BilinearResize(960,1620)` | 1.1799 / 0.6570 / 0.557 | 0.6050 / 0.4533 / 0.749 | True / True | 3 / 3 |
-| resize-334 | Y16 | 1920×1080 | `src.BilinearResize(960,540)` | 0.9131 / 0.4821 / 0.528 | 0.8397 / 0.3346 / 0.398 | True / True | 3 / 3 |
-| resize-335 | Y16 | 1920×1080 | `src.BilinearResize(2880,1620)` | 2.8190 / 1.0778 / 0.382 | 1.3946 / 0.8456 / 0.606 | True / True | 3 / 3 |
-| resize-336 | Y16 | 1920×1080 | `src.BilinearResize(960,1620)` | 1.5274 / 0.9095 / 0.595 | 1.1709 / 0.6890 / 0.588 | True / True | 3 / 3 |
+| resize-331 | Y8 | 1920×1080 | `src.BilinearResize(960,540)` | 0.6852 / 0.4846 / 0.707 | 0.3395 / 0.3025 / 0.891 | True / True | 3 / 3 |
+| resize-332 | Y8 | 1920×1080 | `src.BilinearResize(2880,1620)` | 2.2803 / 0.9622 / 0.422 | 0.9274 / 0.5080 / 0.548 | True / True | 3 / 3 |
+| resize-333 | Y8 | 1920×1080 | `src.BilinearResize(960,1620)` | 1.1799 / 0.7183 / 0.609 | 0.6050 / 0.4853 / 0.802 | True / True | 3 / 3 |
+| resize-334 | Y16 | 1920×1080 | `src.BilinearResize(960,540)` | 0.9131 / 0.4794 / 0.525 | 0.8397 / 0.3512 / 0.418 | True / True | 3 / 3 |
+| resize-335 | Y16 | 1920×1080 | `src.BilinearResize(2880,1620)` | 2.8190 / 1.3900 / 0.493 | 1.3946 / 0.8498 / 0.609 | True / True | 3 / 3 |
+| resize-336 | Y16 | 1920×1080 | `src.BilinearResize(960,1620)` | 1.5274 / 1.0458 / 0.685 | 1.1709 / 0.7288 / 0.622 | True / True | 3 / 3 |
 | resize-337 | Y32 | 1920×1080 | `src.BilinearResize(960,540)` | 1.7943 / 1.2203 / 0.680 | 1.1074 / 0.9013 / 0.814 | False / False | 3 / 3 |
 | resize-338 | Y32 | 1920×1080 | `src.BilinearResize(2880,1620)` | 5.3794 / 2.0272 / 0.377 | 2.7359 / 1.6215 / 0.593 | False / False | 3 / 3 |
 | resize-339 | Y32 | 1920×1080 | `src.BilinearResize(960,1620)` | 3.0312 / 2.0811 / 0.687 | 2.1713 / 1.7365 / 0.800 | False / False | 3 / 3 |
-| resize-340 | Y8 | 1920×1080 | `src.BicubicResize(960,540)` | 0.7206 / 0.8395 / 1.165 | 0.4024 / 0.3868 / 0.961 | True / True | 3 / 3 |
-| resize-341 | Y8 | 1920×1080 | `src.BicubicResize(2880,1620)` | 2.3343 / 1.7064 / 0.731 | 1.2788 / 1.0170 / 0.795 | True / True | 3 / 3 |
-| resize-342 | Y8 | 1920×1080 | `src.BicubicResize(960,1620)` | 1.3089 / 1.5547 / 1.188 | 0.8102 / 0.7706 / 0.951 | True / True | 3 / 3 |
-| resize-343 | Y16 | 1920×1080 | `src.BicubicResize(960,540)` | 0.9362 / 0.8765 / 0.936 | 0.7138 / 0.4435 / 0.621 | True / True | 3 / 3 |
-| resize-344 | Y16 | 1920×1080 | `src.BicubicResize(2880,1620)` | 2.9383 / 1.6740 / 0.570 | 1.9144 / 1.1153 / 0.583 | True / True | 3 / 3 |
-| resize-345 | Y16 | 1920×1080 | `src.BicubicResize(960,1620)` | 1.6911 / 1.6872 / 0.998 | 1.3518 / 0.9299 / 0.688 | True / True | 3 / 3 |
+| resize-340 | Y8 | 1920×1080 | `src.BicubicResize(960,540)` | 0.7206 / 0.8395 / 1.165 | 0.4024 / 0.4138 / 1.028 | True / True | 3 / 3 |
+| resize-341 | Y8 | 1920×1080 | `src.BicubicResize(2880,1620)` | 2.3343 / 1.8104 / 0.776 | 1.2788 / 1.0630 / 0.831 | True / True | 3 / 3 |
+| resize-342 | Y8 | 1920×1080 | `src.BicubicResize(960,1620)` | 1.3089 / 1.5547 / 1.188 | 0.8102 / 0.8150 / 1.006 | True / True | 3 / 3 |
+| resize-343 | Y16 | 1920×1080 | `src.BicubicResize(960,540)` | 0.9362 / 0.8765 / 0.936 | 0.7138 / 0.4760 / 0.667 | True / True | 3 / 3 |
+| resize-344 | Y16 | 1920×1080 | `src.BicubicResize(2880,1620)` | 2.9383 / 1.9232 / 0.655 | 1.9144 / 1.1564 / 0.604 | True / True | 3 / 3 |
+| resize-345 | Y16 | 1920×1080 | `src.BicubicResize(960,1620)` | 1.6911 / 1.6872 / 0.998 | 1.3518 / 1.0014 / 0.741 | True / True | 3 / 3 |
 | resize-346 | Y32 | 1920×1080 | `src.BicubicResize(960,540)` | 1.0781 / 0.9923 / 0.920 | 1.3239 / 0.8671 / 0.655 | False / False | 3 / 3 |
 | resize-347 | Y32 | 1920×1080 | `src.BicubicResize(2880,1620)` | 5.6237 / 3.2069 / 0.570 | 2.8737 / 2.7868 / 0.970 | False / False | 3 / 3 |
 | resize-348 | Y32 | 1920×1080 | `src.BicubicResize(960,1620)` | 2.1103 / 2.1179 / 1.004 | 2.7281 / 1.8671 / 0.684 | False / False | 3 / 3 |
-| resize-349 | Y8 | 1920×1080 | `src.LanczosResize(960,540)` | 0.7702 / 0.8993 / 1.168 | 0.5860 / 0.5241 / 0.894 | True / True | 3 / 3 |
-| resize-350 | Y8 | 1920×1080 | `src.LanczosResize(2880,1620)` | 2.6613 / 2.2870 / 0.859 | 1.8927 / 1.3680 / 0.723 | True / True | 3 / 3 |
-| resize-351 | Y8 | 1920×1080 | `src.LanczosResize(960,1620)` | 1.4337 / 1.7210 / 1.200 | 1.2367 / 1.0486 / 0.848 | True / True | 3 / 3 |
-| resize-352 | Y16 | 1920×1080 | `src.LanczosResize(960,540)` | 0.9902 / 0.9060 / 0.915 | 0.7162 / 0.6049 / 0.845 | True / True | 3 / 3 |
-| resize-353 | Y16 | 1920×1080 | `src.LanczosResize(2880,1620)` | 3.3197 / 2.2878 / 0.689 | 2.3961 / 1.3852 / 0.578 | True / True | 3 / 3 |
-| resize-354 | Y16 | 1920×1080 | `src.LanczosResize(960,1620)` | 1.8410 / 1.8360 / 0.997 | 1.3737 / 1.2213 / 0.889 | True / True | 3 / 3 |
+| resize-349 | Y8 | 1920×1080 | `src.LanczosResize(960,540)` | 0.7702 / 0.8993 / 1.168 | 0.5860 / 0.5717 / 0.976 | True / True | 3 / 3 |
+| resize-350 | Y8 | 1920×1080 | `src.LanczosResize(2880,1620)` | 2.6613 / 2.3623 / 0.888 | 1.8927 / 1.4299 / 0.755 | True / True | 3 / 3 |
+| resize-351 | Y8 | 1920×1080 | `src.LanczosResize(960,1620)` | 1.4337 / 1.7210 / 1.200 | 1.2367 / 1.1143 / 0.901 | True / True | 3 / 3 |
+| resize-352 | Y16 | 1920×1080 | `src.LanczosResize(960,540)` | 0.9902 / 0.9060 / 0.915 | 0.7162 / 0.6548 / 0.914 | True / True | 3 / 3 |
+| resize-353 | Y16 | 1920×1080 | `src.LanczosResize(2880,1620)` | 3.3197 / 2.3749 / 0.715 | 2.3961 / 1.4676 / 0.613 | True / True | 3 / 3 |
+| resize-354 | Y16 | 1920×1080 | `src.LanczosResize(960,1620)` | 1.8410 / 1.8360 / 0.997 | 1.3737 / 1.3199 / 0.961 | True / True | 3 / 3 |
 | resize-355 | Y32 | 1920×1080 | `src.LanczosResize(960,540)` | 1.4957 / 1.3497 / 0.902 | 1.8703 / 1.1757 / 0.629 | False / False | 3 / 3 |
 | resize-356 | Y32 | 1920×1080 | `src.LanczosResize(2880,1620)` | 3.4958 / 3.9102 / 1.119 | 3.4024 / 2.9406 / 0.864 | False / False | 3 / 3 |
 | resize-357 | Y32 | 1920×1080 | `src.LanczosResize(960,1620)` | 2.7844 / 2.7048 / 0.971 | 3.6374 / 2.5906 / 0.712 | False / False | 3 / 3 |
-| resize-358 | Y8 | 1920×1080 | `src.Lanczos4Resize(960,540)` | 0.8675 / 0.9410 / 1.085 | 0.6547 / 0.6099 / 0.931 | True / True | 3 / 3 |
-| resize-359 | Y8 | 1920×1080 | `src.Lanczos4Resize(2880,1620)` | 3.2955 / 3.3134 / 1.005 | 2.2657 / 1.9078 / 0.842 | True / True | 3 / 3 |
-| resize-360 | Y8 | 1920×1080 | `src.Lanczos4Resize(960,1620)` | 1.5631 / 1.8910 / 1.210 | 1.4571 / 1.4999 / 1.029 | True / True | 3 / 3 |
-| resize-361 | Y16 | 1920×1080 | `src.Lanczos4Resize(960,540)` | 1.0659 / 0.9438 / 0.885 | 0.9042 / 0.8515 / 0.942 | True / True | 3 / 3 |
-| resize-362 | Y16 | 1920×1080 | `src.Lanczos4Resize(2880,1620)` | 3.3931 / 3.2599 / 0.961 | 2.6651 / 2.0328 / 0.763 | True / True | 3 / 3 |
-| resize-363 | Y16 | 1920×1080 | `src.Lanczos4Resize(960,1620)` | 1.9666 / 1.9752 / 1.004 | 1.7817 / 1.6447 / 0.923 | True / True | 3 / 3 |
+| resize-358 | Y8 | 1920×1080 | `src.Lanczos4Resize(960,540)` | 0.8675 / 0.9410 / 1.085 | 0.6547 / 0.6716 / 1.026 | True / True | 3 / 3 |
+| resize-359 | Y8 | 1920×1080 | `src.Lanczos4Resize(2880,1620)` | 3.2955 / 3.3134 / 1.005 | 2.2657 / 1.7250 / 0.761 | True / True | 3 / 3 |
+| resize-360 | Y8 | 1920×1080 | `src.Lanczos4Resize(960,1620)` | 1.5631 / 1.8910 / 1.210 | 1.4571 / 1.3625 / 0.935 | True / True | 3 / 3 |
+| resize-361 | Y16 | 1920×1080 | `src.Lanczos4Resize(960,540)` | 1.0659 / 0.9438 / 0.885 | 0.9042 / 0.7893 / 0.873 | True / True | 3 / 3 |
+| resize-362 | Y16 | 1920×1080 | `src.Lanczos4Resize(2880,1620)` | 3.3931 / 3.2599 / 0.961 | 2.6651 / 1.7403 / 0.653 | True / True | 3 / 3 |
+| resize-363 | Y16 | 1920×1080 | `src.Lanczos4Resize(960,1620)` | 1.9666 / 1.9752 / 1.004 | 1.7817 / 1.5471 / 0.868 | True / True | 3 / 3 |
 | resize-364 | Y32 | 1920×1080 | `src.Lanczos4Resize(960,540)` | 1.6435 / 1.6946 / 1.031 | 2.0522 / 1.5923 / 0.776 | False / False | 3 / 3 |
 | resize-365 | Y32 | 1920×1080 | `src.Lanczos4Resize(2880,1620)` | 3.8317 / 4.6564 / 1.215 | 3.8644 / 4.1946 / 1.085 | False / False | 3 / 3 |
 | resize-366 | Y32 | 1920×1080 | `src.Lanczos4Resize(960,1620)` | 3.0492 / 3.1686 / 1.039 | 3.9017 / 3.0004 / 0.769 | False / False | 3 / 3 |
-| resize-367 | Y8 | 1920×1080 | `src.BlackmanResize(960,540)` | 0.7988 / 0.9442 / 1.182 | 0.6543 / 0.7304 / 1.116 | True / True | 3 / 3 |
-| resize-368 | Y8 | 1920×1080 | `src.BlackmanResize(2880,1620)` | 2.6851 / 3.2808 / 1.222 | 2.2287 / 2.0543 / 0.922 | True / True | 3 / 3 |
-| resize-369 | Y8 | 1920×1080 | `src.BlackmanResize(960,1620)` | 1.5314 / 1.8810 / 1.228 | 1.4558 / 1.5108 / 1.038 | True / True | 3 / 3 |
-| resize-370 | Y16 | 1920×1080 | `src.BlackmanResize(960,540)` | 1.0585 / 0.9302 / 0.879 | 0.9184 / 0.8439 / 0.919 | True / True | 3 / 3 |
-| resize-371 | Y16 | 1920×1080 | `src.BlackmanResize(2880,1620)` | 3.2790 / 3.2113 / 0.979 | 2.6843 / 1.9926 / 0.742 | True / True | 3 / 3 |
-| resize-372 | Y16 | 1920×1080 | `src.BlackmanResize(960,1620)` | 1.9318 / 1.9232 / 0.996 | 1.7237 / 1.6776 / 0.973 | True / True | 3 / 3 |
+| resize-367 | Y8 | 1920×1080 | `src.BlackmanResize(960,540)` | 0.7988 / 0.9442 / 1.182 | 0.6543 / 0.6496 / 0.993 | True / True | 3 / 3 |
+| resize-368 | Y8 | 1920×1080 | `src.BlackmanResize(2880,1620)` | 2.6851 / 3.2808 / 1.222 | 2.2287 / 1.7782 / 0.798 | True / True | 3 / 3 |
+| resize-369 | Y8 | 1920×1080 | `src.BlackmanResize(960,1620)` | 1.5314 / 1.8810 / 1.228 | 1.4558 / 1.3469 / 0.925 | True / True | 3 / 3 |
+| resize-370 | Y16 | 1920×1080 | `src.BlackmanResize(960,540)` | 1.0585 / 0.9302 / 0.879 | 0.9184 / 0.7540 / 0.821 | True / True | 3 / 3 |
+| resize-371 | Y16 | 1920×1080 | `src.BlackmanResize(2880,1620)` | 3.2790 / 3.2113 / 0.979 | 2.6843 / 1.6978 / 0.632 | True / True | 3 / 3 |
+| resize-372 | Y16 | 1920×1080 | `src.BlackmanResize(960,1620)` | 1.9318 / 1.9232 / 0.996 | 1.7237 / 1.5561 / 0.903 | True / True | 3 / 3 |
 | resize-373 | Y32 | 1920×1080 | `src.BlackmanResize(960,540)` | 1.6204 / 1.6952 / 1.046 | 2.0081 / 1.6412 / 0.817 | False / False | 3 / 3 |
 | resize-374 | Y32 | 1920×1080 | `src.BlackmanResize(2880,1620)` | 3.7956 / 4.7328 / 1.247 | 3.6420 / 3.8658 / 1.061 | False / False | 3 / 3 |
 | resize-375 | Y32 | 1920×1080 | `src.BlackmanResize(960,1620)` | 3.0324 / 3.1466 / 1.038 | 3.8746 / 2.9147 / 0.752 | False / False | 3 / 3 |
-| resize-376 | Y8 | 1920×1080 | `src.Spline16Resize(960,540)` | 0.7178 / 0.8403 / 1.171 | 0.3961 / 0.5174 / 1.306 | True / True | 3 / 3 |
-| resize-377 | Y8 | 1920×1080 | `src.Spline16Resize(2880,1620)` | 2.3308 / 2.0305 / 0.871 | 1.3922 / 1.2958 / 0.931 | True / True | 3 / 3 |
-| resize-378 | Y8 | 1920×1080 | `src.Spline16Resize(960,1620)` | 1.3169 / 1.5596 / 1.184 | 0.8203 / 0.9329 / 1.137 | True / True | 3 / 3 |
-| resize-379 | Y16 | 1920×1080 | `src.Spline16Resize(960,540)` | 0.9440 / 0.8522 / 0.903 | 0.6090 / 0.5429 / 0.891 | True / True | 3 / 3 |
-| resize-380 | Y16 | 1920×1080 | `src.Spline16Resize(2880,1620)` | 2.9790 / 2.0826 / 0.699 | 1.9962 / 1.3532 / 0.678 | True / True | 3 / 3 |
-| resize-381 | Y16 | 1920×1080 | `src.Spline16Resize(960,1620)` | 1.8173 / 1.7216 / 0.947 | 1.5854 / 1.0918 / 0.689 | True / True | 3 / 3 |
+| resize-376 | Y8 | 1920×1080 | `src.Spline16Resize(960,540)` | 0.7178 / 0.8403 / 1.171 | 0.3961 / 0.3998 / 1.009 | True / True | 3 / 3 |
+| resize-377 | Y8 | 1920×1080 | `src.Spline16Resize(2880,1620)` | 2.3308 / 2.1861 / 0.938 | 1.3922 / 1.0680 / 0.767 | True / True | 3 / 3 |
+| resize-378 | Y8 | 1920×1080 | `src.Spline16Resize(960,1620)` | 1.3169 / 1.5596 / 1.184 | 0.8203 / 0.8334 / 1.016 | True / True | 3 / 3 |
+| resize-379 | Y16 | 1920×1080 | `src.Spline16Resize(960,540)` | 0.9440 / 0.8522 / 0.903 | 0.6090 / 0.4775 / 0.784 | True / True | 3 / 3 |
+| resize-380 | Y16 | 1920×1080 | `src.Spline16Resize(2880,1620)` | 2.9790 / 1.8178 / 0.610 | 1.9962 / 1.1458 / 0.574 | True / True | 3 / 3 |
+| resize-381 | Y16 | 1920×1080 | `src.Spline16Resize(960,1620)` | 1.8173 / 1.7216 / 0.947 | 1.5854 / 0.9870 / 0.623 | True / True | 3 / 3 |
 | resize-382 | Y32 | 1920×1080 | `src.Spline16Resize(960,540)` | 1.3098 / 0.9876 / 0.754 | 1.1952 / 0.9022 / 0.755 | False / False | 3 / 3 |
 | resize-383 | Y32 | 1920×1080 | `src.Spline16Resize(2880,1620)` | 5.7237 / 3.4240 / 0.598 | 3.0358 / 2.8745 / 0.947 | False / False | 3 / 3 |
 | resize-384 | Y32 | 1920×1080 | `src.Spline16Resize(960,1620)` | 2.1304 / 2.0464 / 0.961 | 2.7151 / 1.9979 / 0.736 | False / False | 3 / 3 |
-| resize-385 | Y8 | 1920×1080 | `src.Spline36Resize(960,540)` | 0.7855 / 0.8957 / 1.140 | 0.5871 / 0.6309 / 1.075 | True / True | 3 / 3 |
-| resize-386 | Y8 | 1920×1080 | `src.Spline36Resize(2880,1620)` | 2.7129 / 2.6527 / 0.978 | 1.8550 / 1.6454 / 0.887 | True / True | 3 / 3 |
-| resize-387 | Y8 | 1920×1080 | `src.Spline36Resize(960,1620)` | 1.5344 / 1.7277 / 1.126 | 1.2480 / 1.2709 / 1.018 | True / True | 3 / 3 |
-| resize-388 | Y16 | 1920×1080 | `src.Spline36Resize(960,540)` | 1.0232 / 0.9255 / 0.905 | 0.7260 / 0.7310 / 1.007 | True / True | 3 / 3 |
-| resize-389 | Y16 | 1920×1080 | `src.Spline36Resize(2880,1620)` | 3.2689 / 2.5478 / 0.779 | 2.4113 / 1.6517 / 0.685 | True / True | 3 / 3 |
-| resize-390 | Y16 | 1920×1080 | `src.Spline36Resize(960,1620)` | 1.9002 / 1.8037 / 0.949 | 1.3576 / 1.4442 / 1.064 | True / True | 3 / 3 |
+| resize-385 | Y8 | 1920×1080 | `src.Spline36Resize(960,540)` | 0.7855 / 0.8957 / 1.140 | 0.5871 / 0.5597 / 0.953 | True / True | 3 / 3 |
+| resize-386 | Y8 | 1920×1080 | `src.Spline36Resize(2880,1620)` | 2.7129 / 2.3731 / 0.875 | 1.8550 / 1.4308 / 0.771 | True / True | 3 / 3 |
+| resize-387 | Y8 | 1920×1080 | `src.Spline36Resize(960,1620)` | 1.5344 / 1.7277 / 1.126 | 1.2480 / 1.0929 / 0.876 | True / True | 3 / 3 |
+| resize-388 | Y16 | 1920×1080 | `src.Spline36Resize(960,540)` | 1.0232 / 0.9255 / 0.905 | 0.7260 / 0.6450 / 0.888 | True / True | 3 / 3 |
+| resize-389 | Y16 | 1920×1080 | `src.Spline36Resize(2880,1620)` | 3.2689 / 2.3721 / 0.726 | 2.4113 / 1.4263 / 0.592 | True / True | 3 / 3 |
+| resize-390 | Y16 | 1920×1080 | `src.Spline36Resize(960,1620)` | 1.9002 / 1.8037 / 0.949 | 1.3576 / 1.3007 / 0.958 | True / True | 3 / 3 |
 | resize-391 | Y32 | 1920×1080 | `src.Spline36Resize(960,540)` | 1.5437 / 1.3389 / 0.867 | 1.9536 / 1.2874 / 0.659 | False / False | 3 / 3 |
 | resize-392 | Y32 | 1920×1080 | `src.Spline36Resize(2880,1620)` | 3.5722 / 3.9793 / 1.114 | 3.2024 / 2.9167 / 0.911 | False / False | 3 / 3 |
 | resize-393 | Y32 | 1920×1080 | `src.Spline36Resize(960,1620)` | 2.8494 / 2.5562 / 0.897 | 3.7067 / 2.3467 / 0.633 | False / False | 3 / 3 |
-| resize-394 | Y8 | 1920×1080 | `src.Spline64Resize(960,540)` | 0.8251 / 0.9429 / 1.143 | 0.6457 / 0.7389 / 1.144 | True / True | 3 / 3 |
-| resize-395 | Y8 | 1920×1080 | `src.Spline64Resize(2880,1620)` | 2.7744 / 3.2935 / 1.187 | 2.2239 / 2.0365 / 0.916 | True / True | 3 / 3 |
-| resize-396 | Y8 | 1920×1080 | `src.Spline64Resize(960,1620)` | 1.5412 / 1.8788 / 1.219 | 1.4401 / 1.4988 / 1.041 | True / True | 3 / 3 |
-| resize-397 | Y16 | 1920×1080 | `src.Spline64Resize(960,540)` | 1.0724 / 0.9379 / 0.875 | 0.9127 / 0.8313 / 0.911 | True / True | 3 / 3 |
-| resize-398 | Y16 | 1920×1080 | `src.Spline64Resize(2880,1620)` | 3.4433 / 3.1894 / 0.926 | 2.6949 / 1.9686 / 0.730 | True / True | 3 / 3 |
-| resize-399 | Y16 | 1920×1080 | `src.Spline64Resize(960,1620)` | 2.0697 / 1.9264 / 0.931 | 1.7929 / 1.6248 / 0.906 | True / True | 3 / 3 |
+| resize-394 | Y8 | 1920×1080 | `src.Spline64Resize(960,540)` | 0.8251 / 0.9429 / 1.143 | 0.6457 / 0.6637 / 1.028 | True / True | 3 / 3 |
+| resize-395 | Y8 | 1920×1080 | `src.Spline64Resize(2880,1620)` | 2.7744 / 3.2935 / 1.187 | 2.2239 / 1.7508 / 0.787 | True / True | 3 / 3 |
+| resize-396 | Y8 | 1920×1080 | `src.Spline64Resize(960,1620)` | 1.5412 / 1.8788 / 1.219 | 1.4401 / 1.3593 / 0.944 | True / True | 3 / 3 |
+| resize-397 | Y16 | 1920×1080 | `src.Spline64Resize(960,540)` | 1.0724 / 0.9379 / 0.875 | 0.9127 / 0.7595 / 0.832 | True / True | 3 / 3 |
+| resize-398 | Y16 | 1920×1080 | `src.Spline64Resize(2880,1620)` | 3.4433 / 3.1894 / 0.926 | 2.6949 / 1.7717 / 0.657 | True / True | 3 / 3 |
+| resize-399 | Y16 | 1920×1080 | `src.Spline64Resize(960,1620)` | 2.0697 / 1.9264 / 0.931 | 1.7929 / 1.5520 / 0.866 | True / True | 3 / 3 |
 | resize-400 | Y32 | 1920×1080 | `src.Spline64Resize(960,540)` | 1.7629 / 1.7026 / 0.966 | 2.0882 / 1.4684 / 0.703 | False / False | 3 / 3 |
 | resize-401 | Y32 | 1920×1080 | `src.Spline64Resize(2880,1620)` | 3.8120 / 4.8808 / 1.280 | 3.5669 / 4.0522 / 1.136 | False / False | 3 / 3 |
 | resize-402 | Y32 | 1920×1080 | `src.Spline64Resize(960,1620)` | 3.0772 / 3.2365 / 1.052 | 3.8508 / 2.8506 / 0.740 | False / False | 3 / 3 |
-| resize-403 | Y8 | 1920×1080 | `src.GaussResize(960,540)` | 0.8175 / 0.9498 / 1.162 | 0.6590 / 0.7384 / 1.120 | True / True | 3 / 3 |
-| resize-404 | Y8 | 1920×1080 | `src.GaussResize(2880,1620)` | 2.7161 / 3.3141 / 1.220 | 2.2148 / 2.0450 / 0.923 | True / True | 3 / 3 |
-| resize-405 | Y8 | 1920×1080 | `src.GaussResize(960,1620)` | 1.5451 / 1.9325 / 1.251 | 1.4352 / 1.5013 / 1.046 | True / True | 3 / 3 |
-| resize-406 | Y16 | 1920×1080 | `src.GaussResize(960,540)` | 1.0839 / 0.9474 / 0.874 | 0.9097 / 0.8652 / 0.951 | True / True | 3 / 3 |
-| resize-407 | Y16 | 1920×1080 | `src.GaussResize(2880,1620)` | 3.7006 / 3.3390 / 0.902 | 2.6110 / 2.0096 / 0.770 | True / True | 3 / 3 |
-| resize-408 | Y16 | 1920×1080 | `src.GaussResize(960,1620)` | 2.1267 / 1.9631 / 0.923 | 1.7633 / 1.6818 / 0.954 | True / True | 3 / 3 |
+| resize-403 | Y8 | 1920×1080 | `src.GaussResize(960,540)` | 0.8175 / 0.9498 / 1.162 | 0.6590 / 0.6659 / 1.010 | True / True | 3 / 3 |
+| resize-404 | Y8 | 1920×1080 | `src.GaussResize(2880,1620)` | 2.7161 / 3.3141 / 1.220 | 2.2148 / 1.7721 / 0.800 | True / True | 3 / 3 |
+| resize-405 | Y8 | 1920×1080 | `src.GaussResize(960,1620)` | 1.5451 / 1.9325 / 1.251 | 1.4352 / 1.3450 / 0.937 | True / True | 3 / 3 |
+| resize-406 | Y16 | 1920×1080 | `src.GaussResize(960,540)` | 1.0839 / 0.9474 / 0.874 | 0.9097 / 0.7790 / 0.856 | True / True | 3 / 3 |
+| resize-407 | Y16 | 1920×1080 | `src.GaussResize(2880,1620)` | 3.7006 / 3.3390 / 0.902 | 2.6110 / 1.7477 / 0.669 | True / True | 3 / 3 |
+| resize-408 | Y16 | 1920×1080 | `src.GaussResize(960,1620)` | 2.1267 / 1.9631 / 0.923 | 1.7633 / 1.5406 / 0.874 | True / True | 3 / 3 |
 | resize-409 | Y32 | 1920×1080 | `src.GaussResize(960,540)` | 1.7128 / 1.7165 / 1.002 | 2.0014 / 1.5838 / 0.791 | False / False | 3 / 3 |
 | resize-410 | Y32 | 1920×1080 | `src.GaussResize(2880,1620)` | 4.0593 / 4.5934 / 1.132 | 3.6274 / 3.9222 / 1.081 | False / False | 3 / 3 |
 | resize-411 | Y32 | 1920×1080 | `src.GaussResize(960,1620)` | 3.0458 / 3.2140 / 1.055 | 3.7938 / 2.9667 / 0.782 | False / False | 3 / 3 |
-| resize-412 | Y8 | 1920×1080 | `src.SincResize(960,540)` | 0.8025 / 0.9425 / 1.174 | 0.6536 / 0.7238 / 1.107 | True / True | 3 / 3 |
-| resize-413 | Y8 | 1920×1080 | `src.SincResize(2880,1620)` | 2.7375 / 3.3194 / 1.213 | 2.1922 / 2.0196 / 0.921 | True / True | 3 / 3 |
-| resize-414 | Y8 | 1920×1080 | `src.SincResize(960,1620)` | 1.5236 / 1.8833 / 1.236 | 1.4538 / 1.4760 / 1.015 | True / True | 3 / 3 |
-| resize-415 | Y16 | 1920×1080 | `src.SincResize(960,540)` | 1.0501 / 0.9368 / 0.892 | 0.9107 / 0.8250 / 0.906 | True / True | 3 / 3 |
-| resize-416 | Y16 | 1920×1080 | `src.SincResize(2880,1620)` | 3.2920 / 3.2343 / 0.982 | 2.6467 / 1.9778 / 0.747 | True / True | 3 / 3 |
-| resize-417 | Y16 | 1920×1080 | `src.SincResize(960,1620)` | 1.9782 / 1.9562 / 0.989 | 1.8187 / 1.6382 / 0.901 | True / True | 3 / 3 |
+| resize-412 | Y8 | 1920×1080 | `src.SincResize(960,540)` | 0.8025 / 0.9425 / 1.174 | 0.6536 / 0.6758 / 1.034 | True / True | 3 / 3 |
+| resize-413 | Y8 | 1920×1080 | `src.SincResize(2880,1620)` | 2.7375 / 3.3194 / 1.213 | 2.1922 / 1.7805 / 0.812 | True / True | 3 / 3 |
+| resize-414 | Y8 | 1920×1080 | `src.SincResize(960,1620)` | 1.5236 / 1.8833 / 1.236 | 1.4538 / 1.3613 / 0.936 | True / True | 3 / 3 |
+| resize-415 | Y16 | 1920×1080 | `src.SincResize(960,540)` | 1.0501 / 0.9368 / 0.892 | 0.9107 / 0.7737 / 0.850 | True / True | 3 / 3 |
+| resize-416 | Y16 | 1920×1080 | `src.SincResize(2880,1620)` | 3.2920 / 3.2343 / 0.982 | 2.6467 / 1.7799 / 0.673 | True / True | 3 / 3 |
+| resize-417 | Y16 | 1920×1080 | `src.SincResize(960,1620)` | 1.9782 / 1.9562 / 0.989 | 1.8187 / 1.5256 / 0.839 | True / True | 3 / 3 |
 | resize-418 | Y32 | 1920×1080 | `src.SincResize(960,540)` | 1.5931 / 1.6899 / 1.061 | 2.0575 / 1.5059 / 0.732 | False / False | 3 / 3 |
 | resize-419 | Y32 | 1920×1080 | `src.SincResize(2880,1620)` | 3.7912 / 4.6342 / 1.222 | 3.6092 / 3.9649 / 1.099 | False / False | 3 / 3 |
 | resize-420 | Y32 | 1920×1080 | `src.SincResize(960,1620)` | 3.0939 / 3.1701 / 1.025 | 3.8684 / 2.8997 / 0.750 | False / False | 3 / 3 |
-| resize-421 | Y8 | 1920×1080 | `src.SinPowerResize(960,540)` | 0.7288 / 0.8438 / 1.158 | 0.3937 / 0.4638 / 1.178 | True / True | 3 / 3 |
-| resize-422 | Y8 | 1920×1080 | `src.SinPowerResize(2880,1620)` | 2.3622 / 2.0202 / 0.855 | 1.3013 / 1.2175 / 0.936 | True / True | 3 / 3 |
-| resize-423 | Y8 | 1920×1080 | `src.SinPowerResize(960,1620)` | 1.3208 / 1.5528 / 1.176 | 0.8224 / 0.9369 / 1.139 | True / True | 3 / 3 |
-| resize-424 | Y16 | 1920×1080 | `src.SinPowerResize(960,540)` | 0.9394 / 0.8560 / 0.911 | 0.9661 / 0.5233 / 0.542 | True / True | 3 / 3 |
-| resize-425 | Y16 | 1920×1080 | `src.SinPowerResize(2880,1620)` | 2.9090 / 2.0393 / 0.701 | 1.9160 / 1.4435 / 0.753 | True / True | 3 / 3 |
-| resize-426 | Y16 | 1920×1080 | `src.SinPowerResize(960,1620)` | 1.7081 / 1.7352 / 1.016 | 1.5344 / 1.1713 / 0.763 | True / True | 3 / 3 |
+| resize-421 | Y8 | 1920×1080 | `src.SinPowerResize(960,540)` | 0.7288 / 0.8438 / 1.158 | 0.3937 / 0.3822 / 0.971 | True / True | 3 / 3 |
+| resize-422 | Y8 | 1920×1080 | `src.SinPowerResize(2880,1620)` | 2.3622 / 1.7894 / 0.757 | 1.3013 / 1.0179 / 0.782 | True / True | 3 / 3 |
+| resize-423 | Y8 | 1920×1080 | `src.SinPowerResize(960,1620)` | 1.3208 / 1.5528 / 1.176 | 0.8224 / 0.8311 / 1.011 | True / True | 3 / 3 |
+| resize-424 | Y16 | 1920×1080 | `src.SinPowerResize(960,540)` | 0.9394 / 0.8560 / 0.911 | 0.9661 / 0.4762 / 0.493 | True / True | 3 / 3 |
+| resize-425 | Y16 | 1920×1080 | `src.SinPowerResize(2880,1620)` | 2.9090 / 1.8974 / 0.652 | 1.9160 / 1.2022 / 0.627 | True / True | 3 / 3 |
+| resize-426 | Y16 | 1920×1080 | `src.SinPowerResize(960,1620)` | 1.7081 / 1.7352 / 1.016 | 1.5344 / 1.0678 / 0.696 | True / True | 3 / 3 |
 | resize-427 | Y32 | 1920×1080 | `src.SinPowerResize(960,540)` | 1.0324 / 0.9782 / 0.948 | 1.3493 / 0.8894 / 0.659 | False / False | 3 / 3 |
 | resize-428 | Y32 | 1920×1080 | `src.SinPowerResize(2880,1620)` | 5.6978 / 3.4024 / 0.597 | 2.9997 / 2.6589 / 0.886 | False / False | 3 / 3 |
 | resize-429 | Y32 | 1920×1080 | `src.SinPowerResize(960,1620)` | 2.0579 / 2.0664 / 1.004 | 2.7045 / 1.9270 / 0.713 | False / False | 3 / 3 |
-| resize-430 | Y8 | 1920×1080 | `src.SincLin2Resize(960,540)` | 2.3422 / 3.0963 / 1.322 | 2.6686 / 2.1922 / 0.821 | True / True | 3 / 3 |
-| resize-431 | Y8 | 1920×1080 | `src.SincLin2Resize(2880,1620)` | 6.1501 / 11.2191 / 1.824 | 7.1435 / 6.7674 / 0.947 | True / True | 3 / 3 |
-| resize-432 | Y8 | 1920×1080 | `src.SincLin2Resize(960,1620)` | 4.4813 / 6.4832 / 1.447 | 5.4823 / 4.6116 / 0.841 | True / True | 3 / 3 |
-| resize-433 | Y16 | 1920×1080 | `src.SincLin2Resize(960,540)` | 3.1909 / 3.1135 / 0.976 | 3.0745 / 2.7674 / 0.900 | True / True | 3 / 3 |
-| resize-434 | Y16 | 1920×1080 | `src.SincLin2Resize(2880,1620)` | 7.0710 / 10.2766 / 1.453 | 7.4358 / 6.2364 / 0.839 | True / True | 3 / 3 |
-| resize-435 | Y16 | 1920×1080 | `src.SincLin2Resize(960,1620)` | 5.4226 / 6.1582 / 1.136 | 6.0324 / 5.1770 / 0.858 | True / True | 3 / 3 |
+| resize-430 | Y8 | 1920×1080 | `src.SincLin2Resize(960,540)` | 2.3422 / 2.7787 / 1.186 | 2.6686 / 2.0572 / 0.771 | True / True | 3 / 3 |
+| resize-431 | Y8 | 1920×1080 | `src.SincLin2Resize(2880,1620)` | 6.1501 / 9.8984 / 1.609 | 7.1435 / 5.8707 / 0.822 | True / True | 3 / 3 |
+| resize-432 | Y8 | 1920×1080 | `src.SincLin2Resize(960,1620)` | 4.4813 / 5.5690 / 1.243 | 5.4823 / 4.1198 / 0.751 | True / True | 3 / 3 |
+| resize-433 | Y16 | 1920×1080 | `src.SincLin2Resize(960,540)` | 3.1909 / 2.8171 / 0.883 | 3.0745 / 2.3889 / 0.777 | True / True | 3 / 3 |
+| resize-434 | Y16 | 1920×1080 | `src.SincLin2Resize(2880,1620)` | 7.0710 / 9.0391 / 1.278 | 7.4358 / 5.7535 / 0.774 | True / True | 3 / 3 |
+| resize-435 | Y16 | 1920×1080 | `src.SincLin2Resize(960,1620)` | 5.4226 / 5.6296 / 1.038 | 6.0324 / 4.3720 / 0.725 | True / True | 3 / 3 |
 | resize-436 | Y32 | 1920×1080 | `src.SincLin2Resize(960,540)` | 5.3759 / 6.4304 / 1.196 | 5.1562 / 4.6707 / 0.906 | False / False | 3 / 3 |
 | resize-437 | Y32 | 1920×1080 | `src.SincLin2Resize(2880,1620)` | 11.0242 / 11.4301 / 1.037 | 10.7055 / 11.3834 / 1.063 | False / False | 3 / 3 |
 | resize-438 | Y32 | 1920×1080 | `src.SincLin2Resize(960,1620)` | 9.4673 / 11.2246 / 1.186 | 9.4550 / 8.5253 / 0.902 | False / False | 3 / 3 |
-| resize-439 | Y8 | 1920×1080 | `src.UserDefined2Resize(960,540)` | 0.7678 / 0.8714 / 1.135 | 0.5538 / 0.5546 / 1.001 | True / True | 3 / 3 |
-| resize-440 | Y8 | 1920×1080 | `src.UserDefined2Resize(2880,1620)` | 2.5748 / 2.6092 / 1.013 | 1.7301 / 1.6042 / 0.927 | True / True | 3 / 3 |
-| resize-441 | Y8 | 1920×1080 | `src.UserDefined2Resize(960,1620)` | 1.4414 / 1.6865 / 1.170 | 1.1418 / 1.1741 / 1.028 | True / True | 3 / 3 |
-| resize-442 | Y16 | 1920×1080 | `src.UserDefined2Resize(960,540)` | 1.0083 / 0.8791 / 0.872 | 0.6226 / 0.6133 / 0.985 | True / True | 3 / 3 |
-| resize-443 | Y16 | 1920×1080 | `src.UserDefined2Resize(2880,1620)` | 3.2584 / 2.5980 / 0.797 | 2.4561 / 1.8263 / 0.744 | True / True | 3 / 3 |
-| resize-444 | Y16 | 1920×1080 | `src.UserDefined2Resize(960,1620)` | 1.8377 / 1.8893 / 1.028 | 1.1901 / 1.3194 / 1.109 | True / True | 3 / 3 |
+| resize-439 | Y8 | 1920×1080 | `src.UserDefined2Resize(960,540)` | 0.7678 / 0.8714 / 1.135 | 0.5538 / 0.4887 / 0.882 | True / True | 3 / 3 |
+| resize-440 | Y8 | 1920×1080 | `src.UserDefined2Resize(2880,1620)` | 2.5748 / 2.3847 / 0.926 | 1.7301 / 1.4259 / 0.824 | True / True | 3 / 3 |
+| resize-441 | Y8 | 1920×1080 | `src.UserDefined2Resize(960,1620)` | 1.4414 / 1.6865 / 1.170 | 1.1418 / 1.0298 / 0.902 | True / True | 3 / 3 |
+| resize-442 | Y16 | 1920×1080 | `src.UserDefined2Resize(960,540)` | 1.0083 / 0.8791 / 0.872 | 0.6226 / 0.5462 / 0.877 | True / True | 3 / 3 |
+| resize-443 | Y16 | 1920×1080 | `src.UserDefined2Resize(2880,1620)` | 3.2584 / 2.4372 / 0.748 | 2.4561 / 1.4563 / 0.593 | True / True | 3 / 3 |
+| resize-444 | Y16 | 1920×1080 | `src.UserDefined2Resize(960,1620)` | 1.8377 / 1.8893 / 1.028 | 1.1901 / 1.3055 / 1.097 | True / True | 3 / 3 |
 | resize-445 | Y32 | 1920×1080 | `src.UserDefined2Resize(960,540)` | 1.4076 / 1.1105 / 0.789 | 2.1415 / 1.0112 / 0.472 | False / False | 3 / 3 |
 | resize-446 | Y32 | 1920×1080 | `src.UserDefined2Resize(2880,1620)` | 3.3421 / 3.4975 / 1.047 | 3.1079 / 3.0446 / 0.980 | False / False | 3 / 3 |
 | resize-447 | Y32 | 1920×1080 | `src.UserDefined2Resize(960,1620)` | 2.7393 / 2.2388 / 0.817 | 3.4899 / 2.0823 / 0.597 | False / False | 3 / 3 |
-| extra-001 | Y10 | 1920×1080 | `src.BilinearResize(960,540)` | 0.8304 / 0.6360 / 0.766 | 0.4588 / 0.4157 / 0.906 | True / True | 3 / 3 |
-| extra-002 | Y10 | 1920×1080 | `src.BilinearResize(2880,1620)` | 2.6077 / 1.5414 / 0.591 | 1.3326 / 1.0249 / 0.769 | True / True | 3 / 3 |
-| extra-003 | Y10 | 1920×1080 | `src.LanczosResize(960,540)` | 0.9130 / 0.9673 / 1.059 | 0.6888 / 0.7311 / 1.061 | True / True | 3 / 3 |
-| extra-004 | Y10 | 1920×1080 | `src.LanczosResize(2880,1620)` | 3.0391 / 2.7794 / 0.915 | 2.3024 / 1.6901 / 0.734 | True / True | 3 / 3 |
-| extra-005 | Y10 | 1920×1080 | `src.Spline36Resize(960,540)` | 0.9475 / 0.9854 / 1.040 | 0.6758 / 0.7159 / 1.059 | True / True | 3 / 3 |
-| extra-006 | Y10 | 1920×1080 | `src.Spline36Resize(2880,1620)` | 3.0188 / 2.7522 / 0.912 | 2.2654 / 1.7360 / 0.766 | True / True | 3 / 3 |
-| extra-007 | Y12 | 1920×1080 | `src.BilinearResize(960,540)` | 0.8246 / 0.6433 / 0.780 | 0.4415 / 0.4234 / 0.959 | True / True | 3 / 3 |
-| extra-008 | Y12 | 1920×1080 | `src.BilinearResize(2880,1620)` | 2.6357 / 1.4713 / 0.558 | 1.3158 / 1.0514 / 0.799 | True / True | 3 / 3 |
-| extra-009 | Y12 | 1920×1080 | `src.LanczosResize(960,540)` | 0.9640 / 0.9724 / 1.009 | 0.6719 / 0.7152 / 1.065 | True / True | 3 / 3 |
-| extra-010 | Y12 | 1920×1080 | `src.LanczosResize(2880,1620)` | 3.5258 / 2.8617 / 0.812 | 2.3205 / 1.7249 / 0.743 | True / True | 3 / 3 |
-| extra-011 | Y12 | 1920×1080 | `src.Spline36Resize(960,540)` | 0.9901 / 0.9628 / 0.972 | 0.7006 / 0.7100 / 1.014 | True / True | 3 / 3 |
-| extra-012 | Y12 | 1920×1080 | `src.Spline36Resize(2880,1620)` | 3.0944 / 2.8030 / 0.906 | 2.2684 / 1.7594 / 0.776 | True / True | 3 / 3 |
-| extra-013 | Y14 | 1920×1080 | `src.BilinearResize(960,540)` | 0.8770 / 0.6411 / 0.731 | 0.4418 / 0.4147 / 0.939 | True / True | 3 / 3 |
-| extra-014 | Y14 | 1920×1080 | `src.BilinearResize(2880,1620)` | 2.7323 / 1.4819 / 0.542 | 1.3907 / 1.0111 / 0.727 | True / True | 3 / 3 |
-| extra-015 | Y14 | 1920×1080 | `src.LanczosResize(960,540)` | 0.9693 / 0.9650 / 0.996 | 0.6756 / 0.7244 / 1.072 | True / True | 3 / 3 |
-| extra-016 | Y14 | 1920×1080 | `src.LanczosResize(2880,1620)` | 3.0997 / 2.8058 / 0.905 | 2.2507 / 1.7359 / 0.771 | True / True | 3 / 3 |
-| extra-017 | Y14 | 1920×1080 | `src.Spline36Resize(960,540)` | 0.9902 / 0.9672 / 0.977 | 0.6669 / 0.7190 / 1.078 | True / True | 3 / 3 |
-| extra-018 | Y14 | 1920×1080 | `src.Spline36Resize(2880,1620)` | 3.1997 / 2.8512 / 0.891 | 2.2499 / 1.7194 / 0.764 | True / True | 3 / 3 |
+| extra-001 | Y10 | 1920×1080 | `src.BilinearResize(960,540)` | 0.8304 / 0.5296 / 0.638 | 0.4588 / 0.3520 / 0.767 | True / True | 3 / 3 |
+| extra-002 | Y10 | 1920×1080 | `src.BilinearResize(2880,1620)` | 2.6077 / 1.4513 / 0.557 | 1.3326 / 0.9641 / 0.724 | True / True | 3 / 3 |
+| extra-003 | Y10 | 1920×1080 | `src.LanczosResize(960,540)` | 0.9130 / 0.9673 / 1.059 | 0.6888 / 0.7136 / 1.036 | True / True | 3 / 3 |
+| extra-004 | Y10 | 1920×1080 | `src.LanczosResize(2880,1620)` | 3.0391 / 2.5360 / 0.834 | 2.3024 / 1.5785 / 0.686 | True / True | 3 / 3 |
+| extra-005 | Y10 | 1920×1080 | `src.Spline36Resize(960,540)` | 0.9475 / 0.9854 / 1.040 | 0.6758 / 0.6944 / 1.028 | True / True | 3 / 3 |
+| extra-006 | Y10 | 1920×1080 | `src.Spline36Resize(2880,1620)` | 3.0188 / 2.4341 / 0.806 | 2.2654 / 1.5439 / 0.682 | True / True | 3 / 3 |
+| extra-007 | Y12 | 1920×1080 | `src.BilinearResize(960,540)` | 0.8246 / 0.5524 / 0.670 | 0.4415 / 0.3652 / 0.827 | True / True | 3 / 3 |
+| extra-008 | Y12 | 1920×1080 | `src.BilinearResize(2880,1620)` | 2.6357 / 1.3740 / 0.521 | 1.3158 / 0.9137 / 0.694 | True / True | 3 / 3 |
+| extra-009 | Y12 | 1920×1080 | `src.LanczosResize(960,540)` | 0.9640 / 0.9724 / 1.009 | 0.6719 / 0.6572 / 0.978 | True / True | 3 / 3 |
+| extra-010 | Y12 | 1920×1080 | `src.LanczosResize(2880,1620)` | 3.5258 / 2.4667 / 0.700 | 2.3205 / 1.5625 / 0.673 | True / True | 3 / 3 |
+| extra-011 | Y12 | 1920×1080 | `src.Spline36Resize(960,540)` | 0.9901 / 0.9628 / 0.972 | 0.7006 / 0.6430 / 0.918 | True / True | 3 / 3 |
+| extra-012 | Y12 | 1920×1080 | `src.Spline36Resize(2880,1620)` | 3.0944 / 2.4699 / 0.798 | 2.2684 / 1.5831 / 0.698 | True / True | 3 / 3 |
+| extra-013 | Y14 | 1920×1080 | `src.BilinearResize(960,540)` | 0.8770 / 0.5344 / 0.609 | 0.4418 / 0.3599 / 0.815 | True / True | 3 / 3 |
+| extra-014 | Y14 | 1920×1080 | `src.BilinearResize(2880,1620)` | 2.7323 / 1.4423 / 0.528 | 1.3907 / 0.8954 / 0.644 | True / True | 3 / 3 |
+| extra-015 | Y14 | 1920×1080 | `src.LanczosResize(960,540)` | 0.9693 / 0.9650 / 0.996 | 0.6756 / 0.7008 / 1.037 | True / True | 3 / 3 |
+| extra-016 | Y14 | 1920×1080 | `src.LanczosResize(2880,1620)` | 3.0997 / 2.4876 / 0.803 | 2.2507 / 1.5034 / 0.668 | True / True | 3 / 3 |
+| extra-017 | Y14 | 1920×1080 | `src.Spline36Resize(960,540)` | 0.9902 / 0.9672 / 0.977 | 0.6669 / 0.6644 / 0.996 | True / True | 3 / 3 |
+| extra-018 | Y14 | 1920×1080 | `src.Spline36Resize(2880,1620)` | 3.1997 / 2.5576 / 0.799 | 2.2499 / 1.5093 / 0.671 | True / True | 3 / 3 |
 
 </details>
 
@@ -624,25 +625,25 @@ Expand each family. CPU cells are **upstream ms / new ms / ratio**; low-work rat
 
 | Case | Input | Size | Expression | AVX2: old / new / ratio | Native: old / new / ratio | Equal output | Observations AVX2 / native |
 |---|---|---|---|---|---|---|---|
-| resize-composed-448 | RGB24 | 1920×1080 | `src.LanczosResize(960,540)` | 4.8572 / 3.3844 / 0.697 | 5.7176 / 12.9527 / 2.265 | True / True | 3 / 3 |
-| resize-composed-449 | RGB24 | 1920×1080 | `src.LanczosResize(2880,1620)` | 9.6009 / 19.9352 / 2.076 | 11.2427 / 16.6873 / 1.484 | True / True | 3 / 3 |
-| resize-composed-450 | RGB32 | 1920×1080 | `src.LanczosResize(960,540)` | 3.2803 / 4.5293 / 1.381 | 4.0056 / 17.3099 / 4.321 | True / True | 3 / 3 |
-| resize-composed-451 | RGB32 | 1920×1080 | `src.LanczosResize(2880,1620)` | 7.0602 / 27.3672 / 3.876 | 9.0501 / 21.4755 / 2.373 | True / True | 3 / 3 |
-| resize-composed-452 | RGB48 | 1920×1080 | `src.LanczosResize(960,540)` | 7.5777 / 4.2371 / 0.559 | 7.6564 / 14.1995 / 1.855 | True / True | 3 / 3 |
-| resize-composed-453 | RGB48 | 1920×1080 | `src.LanczosResize(2880,1620)` | 14.1355 / 22.1630 / 1.568 | 14.8278 / 18.1895 / 1.227 | True / True | 3 / 3 |
-| resize-composed-454 | RGB64 | 1920×1080 | `src.LanczosResize(960,540)` | 5.2039 / 5.5468 / 1.066 | 5.5536 / 18.5979 / 3.349 | True / True | 3 / 3 |
-| resize-composed-455 | RGB64 | 1920×1080 | `src.LanczosResize(2880,1620)` | 11.6854 / 28.3206 / 2.424 | 12.3712 / 23.5060 / 1.900 | True / True | 3 / 3 |
-| resize-composed-456 | RGBAP16 | 1920×1080 | `src.LanczosResize(960,540)` | 4.2585 / 4.2254 / 0.992 | 3.7700 / 3.3084 / 0.878 | True / True | 3 / 3 |
-| resize-composed-457 | RGBAP16 | 1920×1080 | `src.LanczosResize(2880,1620)` | 13.4831 / 10.9453 / 0.812 | 10.5025 / 7.0341 / 0.670 | True / True | 3 / 3 |
-| resize-composed-458 | YV12 | 1920×1080 | `src.LanczosResize(960,540)` | 1.1514 / 1.3698 / 1.190 | 0.9237 / 0.9707 / 1.051 | True / True | 3 / 3 |
-| resize-composed-459 | YV12 | 1920×1080 | `src.LanczosResize(2880,1620)` | 4.1591 / 4.0907 / 0.984 | 2.9873 / 2.5212 / 0.844 | True / True | 3 / 3 |
-| resize-composed-460 | YUV420P16 | 1920×1080 | `src.LanczosResize(960,540)` | 1.5391 / 1.3972 / 0.908 | 1.1575 / 1.0912 / 0.943 | True / True | 3 / 3 |
-| resize-composed-461 | YUV420P16 | 1920×1080 | `src.LanczosResize(2880,1620)` | 4.9817 / 4.1950 / 0.842 | 3.6770 / 2.6180 / 0.712 | True / True | 3 / 3 |
+| resize-composed-448 | RGB24 | 1920×1080 | `src.LanczosResize(960,540)` | 4.8572 / 3.3844 / 0.697 | 5.7176 / 2.3112 / 0.404 | True / True | 3 / 3 |
+| resize-composed-449 | RGB24 | 1920×1080 | `src.LanczosResize(2880,1620)` | 9.6009 / 8.6542 / 0.901 | 11.2427 / 5.6444 / 0.502 | True / True | 3 / 3 |
+| resize-composed-450 | RGB32 | 1920×1080 | `src.LanczosResize(960,540)` | 3.2803 / 4.5293 / 1.381 | 4.0056 / 3.1887 / 0.796 | True / True | 3 / 3 |
+| resize-composed-451 | RGB32 | 1920×1080 | `src.LanczosResize(2880,1620)` | 7.0602 / 11.3349 / 1.605 | 9.0501 / 7.3843 / 0.816 | True / True | 3 / 3 |
+| resize-composed-452 | RGB48 | 1920×1080 | `src.LanczosResize(960,540)` | 7.5777 / 4.2371 / 0.559 | 7.6564 / 3.4853 / 0.455 | True / True | 3 / 3 |
+| resize-composed-453 | RGB48 | 1920×1080 | `src.LanczosResize(2880,1620)` | 14.1355 / 9.8847 / 0.699 | 14.8278 / 7.0522 / 0.476 | True / True | 3 / 3 |
+| resize-composed-454 | RGB64 | 1920×1080 | `src.LanczosResize(960,540)` | 5.2039 / 5.5468 / 1.066 | 5.5536 / 4.6530 / 0.838 | True / True | 3 / 3 |
+| resize-composed-455 | RGB64 | 1920×1080 | `src.LanczosResize(2880,1620)` | 11.6854 / 12.9070 / 1.105 | 12.3712 / 9.2516 / 0.748 | True / True | 3 / 3 |
+| resize-composed-456 | RGBAP16 | 1920×1080 | `src.LanczosResize(960,540)` | 4.2585 / 4.2254 / 0.992 | 3.7700 / 2.9660 / 0.787 | True / True | 3 / 3 |
+| resize-composed-457 | RGBAP16 | 1920×1080 | `src.LanczosResize(2880,1620)` | 13.4831 / 9.8113 / 0.728 | 10.5025 / 6.3896 / 0.608 | True / True | 3 / 3 |
+| resize-composed-458 | YV12 | 1920×1080 | `src.LanczosResize(960,540)` | 1.1514 / 1.3698 / 1.190 | 0.9237 / 0.8794 / 0.952 | True / True | 3 / 3 |
+| resize-composed-459 | YV12 | 1920×1080 | `src.LanczosResize(2880,1620)` | 4.1591 / 3.7044 / 0.891 | 2.9873 / 2.2632 / 0.758 | True / True | 3 / 3 |
+| resize-composed-460 | YUV420P16 | 1920×1080 | `src.LanczosResize(960,540)` | 1.5391 / 1.3972 / 0.908 | 1.1575 / 1.0395 / 0.898 | True / True | 3 / 3 |
+| resize-composed-461 | YUV420P16 | 1920×1080 | `src.LanczosResize(2880,1620)` | 4.9817 / 3.6860 / 0.740 | 3.6770 / 2.5017 / 0.680 | True / True | 3 / 3 |
 | resize-composed-462 | YUV420PS | 1920×1080 | `src.LanczosResize(960,540)` | 2.3796 / 2.1953 / 0.923 | 4.1050 / 1.9668 / 0.479 | False / False | 3 / 3 |
 | resize-composed-463 | YUV420PS | 1920×1080 | `src.LanczosResize(2880,1620)` | 5.2721 / 5.8350 / 1.107 | 5.2061 / 4.3925 / 0.844 | False / False | 3 / 3 |
-| resize-composed-464 | YUY2 | 1920×1080 | `src.LanczosResize(960,540)` | 2.1546 / 2.2028 / 1.022 | 1.7961 / 12.0856 / 6.729 | True / True | 3 / 3 |
-| resize-composed-465 | YUY2 | 1920×1080 | `src.LanczosResize(2880,1620)` | 6.3326 / 16.5040 / 2.606 | 4.4545 / 14.3121 / 3.213 | True / True | 3 / 3 |
-| resize-composed-473 | YUV420P16 | 3840×2160 | `src.LanczosResize(1920,1080)` | 6.1202 / 6.1492 / 1.005 | 5.3792 / 4.7132 / 0.876 | True / True | 3 / 3 |
+| resize-composed-464 | YUY2 | 1920×1080 | `src.LanczosResize(960,540)` | 2.1546 / 2.2028 / 1.022 | 1.7961 / 1.5360 / 0.855 | True / True | 3 / 3 |
+| resize-composed-465 | YUY2 | 1920×1080 | `src.LanczosResize(2880,1620)` | 6.3326 / 5.9264 / 0.936 | 4.4545 / 3.6207 / 0.813 | True / True | 3 / 3 |
+| resize-composed-473 | YUV420P16 | 3840×2160 | `src.LanczosResize(1920,1080)` | 6.1202 / 6.1492 / 1.005 | 5.3792 / 4.4352 / 0.825 | True / True | 3 / 3 |
 
 </details>
 
@@ -653,15 +654,15 @@ Expand each family. CPU cells are **upstream ms / new ms / ratio**; low-work rat
 |---|---|---|---|---|---|---|---|
 | yuy2-029 | YUY2 | 1920×1080 | `src.ConvertToYV16()` | 0.4125 / 0.0832 / 0.202 | 0.4173 / 0.0882 / 0.211 | True / True | 3 / 3 |
 | yuy2-032 | YV16 | 1920×1080 | `src.ConvertToYUY2()` | 0.0896 / 0.0759 / 0.847 | 0.0940 / 0.0803 / 0.854 | True / True | 3 / 3 |
-| yuy2-138 | YUY2 | 1920×1080 | `src.ConvertToRGB24()` | 5.0136 / 3.2899 / 0.656 | 3.2946 / 2.6263 / 0.797 | False / False | 3 / 3 |
-| yuy2-139 | YUY2 | 1920×1080 | `src.ConvertToRGB32()` | 4.8543 / 3.4042 / 0.701 | 3.0963 / 2.6794 / 0.865 | False / False | 3 / 3 |
+| yuy2-138 | YUY2 | 1920×1080 | `src.ConvertToRGB24()` | 5.0136 / 3.5896 / 0.716 | 3.2946 / 2.6273 / 0.797 | False / False | 3 / 3 |
+| yuy2-139 | YUY2 | 1920×1080 | `src.ConvertToRGB32()` | 4.8543 / 3.6945 / 0.761 | 3.0963 / 2.7367 / 0.884 | False / False | 3 / 3 |
 | yuy2-140 | YUY2 | 1920×1080 | `src.ConvertToYV12()` | 1.5727 / 0.5750 / 0.366 | 1.6913 / 0.5073 / 0.300 | True / True | 3 / 3 |
-| yuy2-141 | YUY2 | 1920×1080 | `src.ConvertToYV24()` | 3.9239 / 1.7447 / 0.445 | 2.0798 / 1.0058 / 0.484 | True / True | 3 / 3 |
-| yuy2-142 | RGB24 | 1920×1080 | `src.ConvertToYUY2()` | 2.4049 / 2.9282 / 1.218 | 1.8446 / 1.9221 / 1.042 | True / True | 3 / 3 |
-| yuy2-143 | RGB32 | 1920×1080 | `src.ConvertToYUY2()` | 2.9987 / 3.0709 / 1.024 | 2.1728 / 1.9607 / 0.902 | True / True | 3 / 3 |
+| yuy2-141 | YUY2 | 1920×1080 | `src.ConvertToYV24()` | 3.9239 / 1.9066 / 0.486 | 2.0798 / 1.0578 / 0.509 | True / True | 3 / 3 |
+| yuy2-142 | RGB24 | 1920×1080 | `src.ConvertToYUY2()` | 2.4049 / 2.9282 / 1.218 | 1.8446 / 2.0871 / 1.131 | True / True | 3 / 3 |
+| yuy2-143 | RGB32 | 1920×1080 | `src.ConvertToYUY2()` | 2.9987 / 3.0709 / 1.024 | 2.1728 / 2.2674 / 1.044 | True / True | 3 / 3 |
 | yuy2-144 | YV12 | 1920×1080 | `src.ConvertToYUY2()` | 0.5258 / 0.6223 / 1.184 | 0.6358 / 0.5273 / 0.829 | True / True | 3 / 3 |
-| yuy2-145 | YV24 | 1920×1080 | `src.ConvertToYUY2()` | 1.6180 / 1.6786 / 1.037 | 0.8944 / 0.7865 / 0.879 | True / True | 3 / 3 |
-| yuy2-470 | RGB32 | 3840×2160 | `src.ConvertToYUY2()` | 11.6317 / 11.6994 / 1.006 | 10.2158 / 8.3140 / 0.814 | True / True | 3 / 3 |
+| yuy2-145 | YV24 | 1920×1080 | `src.ConvertToYUY2()` | 1.6180 / 1.6786 / 1.037 | 0.8944 / 0.8743 / 0.978 | True / True | 3 / 3 |
+| yuy2-470 | RGB32 | 3840×2160 | `src.ConvertToYUY2()` | 11.6317 / 11.6994 / 1.006 | 10.2158 / 8.2307 / 0.806 | True / True | 3 / 3 |
 
 </details>
 
@@ -1316,77 +1317,77 @@ Current module timings for these full-filter profiles are compared with their sa
 | Profile | CPU | Upstream ms | New ms | New / upstream |
 |---|---|---|---|---|
 | Y8-SincLin2Resize-3-H | avx2 | 0.6314 | 0.6995 | 1.108 |
-| Y8-SincLin2Resize-3-H | native | 0.3725 | 0.4226 | 1.135 |
+| Y8-SincLin2Resize-3-H | native | 0.3725 | 0.3412 | 0.916 |
 | Y8-SincLin2Resize-3-V | avx2 | 0.2932 | 0.3968 | 1.353 |
 | Y8-SincLin2Resize-3-V | native | 0.4309 | 0.3197 | 0.742 |
 | Y8-SincLin2Resize-3-HV | avx2 | 0.7660 | 0.9007 | 1.176 |
-| Y8-SincLin2Resize-3-HV | native | 0.5823 | 0.6336 | 1.088 |
-| Y8-SincLin2Resize-8-H | avx2 | 0.9747 | 1.3697 | 1.405 |
-| Y8-SincLin2Resize-8-H | native | 0.8465 | 0.8034 | 0.949 |
+| Y8-SincLin2Resize-3-HV | native | 0.5823 | 0.5281 | 0.907 |
+| Y8-SincLin2Resize-8-H | avx2 | 0.9747 | 1.0162 | 1.043 |
+| Y8-SincLin2Resize-8-H | native | 0.8465 | 0.7002 | 0.827 |
 | Y8-SincLin2Resize-8-V | avx2 | 0.6917 | 0.9637 | 1.393 |
 | Y8-SincLin2Resize-8-V | native | 1.0854 | 0.7654 | 0.705 |
-| Y8-SincLin2Resize-8-HV | avx2 | 1.3233 | 1.9559 | 1.478 |
-| Y8-SincLin2Resize-8-HV | native | 1.4145 | 1.2888 | 0.911 |
-| Y8-SincLin2Resize-15-H | avx2 | 1.5956 | 2.0520 | 1.286 |
-| Y8-SincLin2Resize-15-H | native | 1.5523 | 1.3543 | 0.872 |
+| Y8-SincLin2Resize-8-HV | avx2 | 1.3233 | 1.4869 | 1.124 |
+| Y8-SincLin2Resize-8-HV | native | 1.4145 | 1.2390 | 0.876 |
+| Y8-SincLin2Resize-15-H | avx2 | 1.5956 | 1.6728 | 1.048 |
+| Y8-SincLin2Resize-15-H | native | 1.5523 | 1.2118 | 0.781 |
 | Y8-SincLin2Resize-15-V | avx2 | 1.2961 | 1.7166 | 1.324 |
 | Y8-SincLin2Resize-15-V | native | 2.0214 | 1.4062 | 0.696 |
-| Y8-SincLin2Resize-15-HV | avx2 | 2.2622 | 3.0886 | 1.365 |
-| Y8-SincLin2Resize-15-HV | native | 2.5623 | 2.2240 | 0.868 |
+| Y8-SincLin2Resize-15-HV | avx2 | 2.2622 | 2.5534 | 1.129 |
+| Y8-SincLin2Resize-15-HV | native | 2.5623 | 1.9952 | 0.779 |
 | Y8-LanczosResize-3-H | avx2 | 0.6208 | 0.7030 | 1.132 |
-| Y8-LanczosResize-3-H | native | 0.3649 | 0.4325 | 1.185 |
+| Y8-LanczosResize-3-H | native | 0.3649 | 0.3416 | 0.936 |
 | Y8-LanczosResize-3-V | avx2 | 0.2944 | 0.3941 | 1.339 |
 | Y8-LanczosResize-3-V | native | 0.4250 | 0.3162 | 0.744 |
 | Y8-LanczosResize-3-HV | avx2 | 0.8326 | 0.8955 | 1.075 |
-| Y8-LanczosResize-3-HV | native | 0.5821 | 0.6341 | 1.089 |
-| Y8-LanczosResize-8-H | avx2 | 0.9732 | 1.2542 | 1.289 |
-| Y8-LanczosResize-8-H | native | 0.8645 | 0.7947 | 0.919 |
+| Y8-LanczosResize-3-HV | native | 0.5821 | 0.5197 | 0.893 |
+| Y8-LanczosResize-8-H | avx2 | 0.9732 | 1.0199 | 1.048 |
+| Y8-LanczosResize-8-H | native | 0.8645 | 0.6943 | 0.803 |
 | Y8-LanczosResize-8-V | avx2 | 0.7154 | 0.9445 | 1.320 |
 | Y8-LanczosResize-8-V | native | 1.0852 | 0.7740 | 0.713 |
-| Y8-LanczosResize-8-HV | avx2 | 1.3237 | 1.9454 | 1.470 |
-| Y8-LanczosResize-8-HV | native | 1.3876 | 1.3027 | 0.939 |
-| Y8-LanczosResize-15-H | avx2 | 1.6049 | 2.0657 | 1.287 |
-| Y8-LanczosResize-15-H | native | 1.5330 | 1.3598 | 0.887 |
+| Y8-LanczosResize-8-HV | avx2 | 1.3237 | 1.5328 | 1.158 |
+| Y8-LanczosResize-8-HV | native | 1.3876 | 1.1381 | 0.820 |
+| Y8-LanczosResize-15-H | avx2 | 1.6049 | 1.6754 | 1.044 |
+| Y8-LanczosResize-15-H | native | 1.5330 | 1.2216 | 0.797 |
 | Y8-LanczosResize-15-V | avx2 | 1.2662 | 1.7102 | 1.351 |
 | Y8-LanczosResize-15-V | native | 2.0136 | 1.3977 | 0.694 |
-| Y8-LanczosResize-15-HV | avx2 | 2.2671 | 3.0480 | 1.344 |
-| Y8-LanczosResize-15-HV | native | 2.5606 | 2.2577 | 0.882 |
+| Y8-LanczosResize-15-HV | avx2 | 2.2671 | 2.5482 | 1.124 |
+| Y8-LanczosResize-15-HV | native | 2.5606 | 1.9941 | 0.779 |
 | Y16-SincLin2Resize-3-H | avx2 | 0.7194 | 0.7158 | 0.995 |
-| Y16-SincLin2Resize-3-H | native | 0.4230 | 0.5532 | 1.308 |
+| Y16-SincLin2Resize-3-H | native | 0.4230 | 0.4427 | 1.047 |
 | Y16-SincLin2Resize-3-V | avx2 | 0.3549 | 0.3494 | 0.985 |
 | Y16-SincLin2Resize-3-V | native | 0.4028 | 0.2571 | 0.638 |
 | Y16-SincLin2Resize-3-HV | avx2 | 0.9732 | 0.9053 | 0.930 |
-| Y16-SincLin2Resize-3-HV | native | 0.6942 | 0.7349 | 1.059 |
-| Y16-SincLin2Resize-8-H | avx2 | 1.0374 | 1.2871 | 1.241 |
-| Y16-SincLin2Resize-8-H | native | 1.0576 | 1.0925 | 1.033 |
+| Y16-SincLin2Resize-3-HV | native | 0.6942 | 0.5999 | 0.864 |
+| Y16-SincLin2Resize-8-H | avx2 | 1.0374 | 1.1109 | 1.071 |
+| Y16-SincLin2Resize-8-H | native | 1.0576 | 0.9516 | 0.900 |
 | Y16-SincLin2Resize-8-V | avx2 | 0.8906 | 0.8954 | 1.005 |
 | Y16-SincLin2Resize-8-V | native | 1.0850 | 0.6545 | 0.603 |
-| Y16-SincLin2Resize-8-HV | avx2 | 1.7066 | 1.8449 | 1.081 |
-| Y16-SincLin2Resize-8-HV | native | 1.7154 | 1.4968 | 0.873 |
-| Y16-SincLin2Resize-15-H | avx2 | 1.8558 | 2.1267 | 1.146 |
-| Y16-SincLin2Resize-15-H | native | 1.8629 | 1.9764 | 1.061 |
+| Y16-SincLin2Resize-8-HV | avx2 | 1.7066 | 1.5694 | 0.920 |
+| Y16-SincLin2Resize-8-HV | native | 1.7154 | 1.3357 | 0.779 |
+| Y16-SincLin2Resize-15-H | avx2 | 1.8558 | 1.8472 | 0.995 |
+| Y16-SincLin2Resize-15-H | native | 1.8629 | 1.5906 | 0.854 |
 | Y16-SincLin2Resize-15-V | avx2 | 1.7412 | 1.5927 | 0.915 |
 | Y16-SincLin2Resize-15-V | native | 1.8987 | 1.1229 | 0.591 |
-| Y16-SincLin2Resize-15-HV | avx2 | 3.1242 | 3.0426 | 0.974 |
-| Y16-SincLin2Resize-15-HV | native | 2.9068 | 2.7333 | 0.940 |
+| Y16-SincLin2Resize-15-HV | avx2 | 3.1242 | 2.6588 | 0.851 |
+| Y16-SincLin2Resize-15-HV | native | 2.9068 | 2.2580 | 0.777 |
 | Y16-LanczosResize-3-H | avx2 | 0.7074 | 0.7128 | 1.008 |
-| Y16-LanczosResize-3-H | native | 0.4121 | 0.5416 | 1.314 |
+| Y16-LanczosResize-3-H | native | 0.4121 | 0.4426 | 1.074 |
 | Y16-LanczosResize-3-V | avx2 | 0.3526 | 0.3533 | 1.002 |
 | Y16-LanczosResize-3-V | native | 0.4036 | 0.2604 | 0.645 |
 | Y16-LanczosResize-3-HV | avx2 | 0.9781 | 0.9219 | 0.943 |
-| Y16-LanczosResize-3-HV | native | 0.6879 | 0.7193 | 1.046 |
-| Y16-LanczosResize-8-H | avx2 | 1.0487 | 1.2875 | 1.228 |
-| Y16-LanczosResize-8-H | native | 1.0621 | 1.0876 | 1.024 |
+| Y16-LanczosResize-3-HV | native | 0.6879 | 0.6010 | 0.874 |
+| Y16-LanczosResize-8-H | avx2 | 1.0487 | 1.1054 | 1.054 |
+| Y16-LanczosResize-8-H | native | 1.0621 | 0.9411 | 0.886 |
 | Y16-LanczosResize-8-V | avx2 | 0.8713 | 0.8959 | 1.028 |
 | Y16-LanczosResize-8-V | native | 1.0199 | 0.6284 | 0.616 |
-| Y16-LanczosResize-8-HV | avx2 | 1.6875 | 1.8048 | 1.070 |
-| Y16-LanczosResize-8-HV | native | 1.6833 | 1.4787 | 0.878 |
-| Y16-LanczosResize-15-H | avx2 | 1.8398 | 2.1059 | 1.145 |
-| Y16-LanczosResize-15-H | native | 1.8073 | 1.9792 | 1.095 |
+| Y16-LanczosResize-8-HV | avx2 | 1.6875 | 1.5717 | 0.931 |
+| Y16-LanczosResize-8-HV | native | 1.6833 | 1.3035 | 0.774 |
+| Y16-LanczosResize-15-H | avx2 | 1.8398 | 1.8472 | 1.004 |
+| Y16-LanczosResize-15-H | native | 1.8073 | 1.5868 | 0.878 |
 | Y16-LanczosResize-15-V | avx2 | 1.7906 | 1.6314 | 0.911 |
 | Y16-LanczosResize-15-V | native | 1.8915 | 1.1199 | 0.592 |
-| Y16-LanczosResize-15-HV | avx2 | 3.1242 | 3.0551 | 0.978 |
-| Y16-LanczosResize-15-HV | native | 2.9314 | 2.7518 | 0.939 |
+| Y16-LanczosResize-15-HV | avx2 | 3.1242 | 2.6449 | 0.847 |
+| Y16-LanczosResize-15-HV | native | 2.9314 | 2.2737 | 0.776 |
 | Y32-SincLin2Resize-3-H | avx2 | 1.0542 | 0.9320 | 0.884 |
 | Y32-SincLin2Resize-3-H | native | 1.0973 | 0.7478 | 0.681 |
 | Y32-SincLin2Resize-3-V | avx2 | 0.5230 | 0.5735 | 1.096 |

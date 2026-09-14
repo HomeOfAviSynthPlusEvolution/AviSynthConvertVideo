@@ -45,18 +45,25 @@ struct vc_floyd_context {
   std::vector<int> errors;
 };
 namespace {
-int FloorDivide(int value, int divisor) {
-  return value >= 0 ? value / divisor : -((-value + divisor - 1) / divisor);
+int FloorShift(int value, int shift) {
+  // All callers use shifts in [1, 15]. Bias in unsigned arithmetic so negative
+  // values round down without relying on signed right shift in C++17. Both
+  // shifted values fit in int32_t, including at the signed input endpoints.
+  constexpr uint32_t bias = uint32_t{1} << 31;
+  return int32_t((uint32_t(value) + bias) >> shift) - int32_t(bias >> shift);
 }
 template <class S, class D, bool low>
 void Execute(vc_floyd_context& p, vc_const_plane source, vc_plane destination, vc_rows rows) {
-  const auto& c = p.config.depth;
-  const int divisor = 1 << (c.source_bits - p.config.quantization_bits), rounder = divisor / 2;
+  const auto c = p.config.depth;
+  const auto range = p.range;
+  const int shift = c.source_bits - p.config.quantization_bits;
+  const int divisor = 1 << shift, rounder = divisor / 2;
   const int maximum = (1 << c.destination_bits) - 1, source_max = (1 << c.source_bits) - 1;
   const int quantized_max = (1 << p.config.quantization_bits) - 1;
   const int upscale = 1 << (c.destination_bits - p.config.quantization_bits);
   const float backscale = float(maximum) / float(quantized_max);
   int* errors = p.errors.data() + 1;
+  int next_error = p.next_error;
   for (int y = rows.first_row; y < rows.first_row + rows.row_count; ++y) {
     const auto* src = vc::Row<S>(source, y);
     auto* dst = vc::Row<D>(destination, y);
@@ -65,16 +72,17 @@ void Execute(vc_floyd_context& p, vc_const_plane source, vc_plane destination, v
     for (int x = begin; x != end; x += direction) {
       int value = src[x];
       if (c.source_full != c.destination_full) {
-        const float scaled = (float(value) - p.range.source_offset) * p.range.factor;
-        value = std::clamp(int(scaled + (p.range.destination_offset + .5f)), 0, source_max);
+        const float scaled = (float(value) - range.source_offset) * range.factor;
+        value = std::clamp(int(scaled + (range.destination_offset + .5f)), 0, source_max);
       }
-      int error = p.next_error;
+      int error = next_error;
       if constexpr (low)
         error -= rounder;
       const int sum = value + error;
-      int quantized = FloorDivide(sum + rounder, divisor);
-      // Multiplication also defines negative values, unlike signed left shift.
-      error = sum - quantized * divisor;
+      int quantized = FloorShift(sum + rounder, shift);
+      // The residual is in [-rounder, rounder - 1]. Compute it independently
+      // of the quotient to shorten the feedback dependency for the next pixel.
+      error = int(uint32_t(sum + rounder) & uint32_t(divisor - 1)) - rounder;
       if constexpr (low)
         quantized = int(float(std::min(quantized, quantized_max)) * backscale + .5f);
       else
@@ -82,13 +90,14 @@ void Execute(vc_floyd_context& p, vc_const_plane source, vc_plane destination, v
       dst[x] = static_cast<D>(std::clamp(quantized, 0, maximum));
       // Preserve the inherited optimized serpentine coefficients (0,4,5,7)/16
       // and their individually rounded integer residual, including row edges.
-      const int e3 = FloorDivide(error * 4 + 8, 16), e5 = FloorDivide(error * 5 + 8, 16), e7 = error - e3 - e5;
-      p.next_error = errors[x + direction] + e7;
+      const int e3 = FloorShift(error * 4 + 8, 4), e5 = FloorShift(error * 5 + 8, 4), e7 = error - e3 - e5;
+      next_error = errors[x + direction] + e7;
       errors[x - direction] += e3;
       errors[x] += e5;
       errors[x + direction] = 0;
     }
   }
+  p.next_error = next_error;
   p.next_row += rows.row_count;
 }
 template <class S, class D>

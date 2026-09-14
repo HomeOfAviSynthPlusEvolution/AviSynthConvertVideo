@@ -2,6 +2,7 @@
 #include "video_convert/dither.h"
 #include <gtest/gtest.h>
 #include <algorithm>
+#include <cmath>
 #include <cstdint>
 #include <fstream>
 #include <memory>
@@ -121,6 +122,67 @@ TEST(FloydContract, ExactAllocationsSignedStridesAndReset) {
         for (int x = 0; x < w; ++x)
           EXPECT_EQ(out[y * w + x], back[(h - 1 - y) * w + x]);
     }
+}
+template <class S, class D>
+void CheckQuantizationArithmetic(int source_bits, int destination_bits) {
+  // Use mathematical floor in double and wide integer state as an independent
+  // oracle for negative residuals and every legal power-of-two divisor.
+  constexpr int w = 257, h = 9;
+  const int source_max = (1 << source_bits) - 1, maximum = (1 << destination_bits) - 1;
+  for (int q = 1; q <= destination_bits && q < source_bits; ++q) {
+    SCOPED_TRACE(testing::Message() << source_bits << " -> " << destination_bits << ", q=" << q);
+    vc_floyd_config c{{source_bits, destination_bits, 1, 1, 0}, q};
+    vc_floyd_context* raw = nullptr;
+    ASSERT_EQ(vc_floyd_create(&c, w, h, &raw), VC_OK);
+    Plan context(raw, vc_floyd_destroy);
+    const int divisor = 1 << (source_bits - q), rounder = divisor / 2, quantized_max = (1 << q) - 1;
+    const float backscale = float(maximum) / float(quantized_max);
+    for (int pattern = 0; pattern < 5; ++pattern) {
+      SCOPED_TRACE(pattern);
+      std::vector<S> input(w * h);
+      std::vector<D> output(w * h), expected(w * h);
+      uint32_t random = 193;
+      for (int i = 0; i < w * h; ++i) {
+        random = random * 1664525u + 1013904223u;
+        input[i] = S(pattern == 0   ? 0
+                     : pattern == 1 ? source_max
+                     : pattern == 2 ? source_max / 2
+                     : pattern == 3 ? (i & 1) * source_max
+                                    : (random >> 16) & source_max);
+      }
+      std::vector<int64_t> errors(w + 2);
+      int64_t carry = 0;
+      for (int y = 0; y < h; ++y) {
+        const int direction = y & 1 ? -1 : 1;
+        for (int x = direction > 0 ? 0 : w - 1; x >= 0 && x < w; x += direction) {
+          const int64_t sum = input[y * w + x] + carry - (q < 8 ? rounder : 0);
+          const int quantized = int(std::floor(double(sum + rounder) / divisor));
+          const int64_t residual = sum - int64_t(quantized) * divisor;
+          const int code = q < 8 ? int(float(std::min(quantized, quantized_max)) * backscale + .5f)
+                                 : quantized * (1 << (destination_bits - q));
+          expected[y * w + x] = D(std::clamp(code, 0, maximum));
+          const int64_t e3 = int64_t(std::floor(double(residual * 4 + 8) / 16));
+          const int64_t e5 = int64_t(std::floor(double(residual * 5 + 8) / 16));
+          carry = errors[x + 1 + direction] + residual - e3 - e5;
+          errors[x + 1 - direction] += e3;
+          errors[x + 1] += e5;
+          errors[x + 1 + direction] = 0;
+        }
+      }
+      vc_floyd_reset(raw);
+      // Split after an odd row count, so the saved carry feeds a reverse row.
+      ASSERT_EQ(vc_floyd_execute(raw, {input.data(), w * sizeof(S)}, {output.data(), w * sizeof(D)}, {w, h, 0, 3}),
+                VC_OK);
+      ASSERT_EQ(vc_floyd_execute(raw, {input.data(), w * sizeof(S)}, {output.data(), w * sizeof(D)}, {w, h, 3, h - 3}),
+                VC_OK);
+      EXPECT_EQ(output, expected);
+    }
+  }
+}
+TEST(FloydArithmetic, MatchesMathematicalRoundingAtEveryQuantizationShift) {
+  CheckQuantizationArithmetic<uint8_t, uint8_t>(8, 8);
+  CheckQuantizationArithmetic<uint16_t, uint8_t>(16, 8);
+  CheckQuantizationArithmetic<uint16_t, uint16_t>(16, 16);
 }
 TEST(FloydContract, InvalidCreationClearsOutput) {
   vc_floyd_config c{{16, 8, 1, 1, 0}, 8};

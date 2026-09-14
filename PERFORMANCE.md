@@ -1,19 +1,18 @@
 # Video conversion benchmark results
 
-All saved comparison rows are included: **522 full-filter cases**, **584 kernel rows**, and **108 supplementary long-support resampling rows** (54 profiles × two targets). The supplementary set overlaps the filter audit. Every potentially affected filter family and all resampling kernel profiles have been remeasured after the long-support fix; current tables contain no pre-fix resampling timings. Missing upstream counterparts are explicitly marked, not counted as wins. Coverage is the measured workload set, not every possible parameter combination. Times are milliseconds.
+Current performance comparisons: **522 full-filter cases**, **584 kernel rows**, and **108 supplementary long-support resampling rows** (54 profiles × two targets). The supplementary set overlaps the filter audit. The tables include refreshed AMD measurements for **Floyd**. Unaffected paths retain their existing measurements. Missing upstream counterparts are explicitly marked, not counted as wins. Coverage is the measured workload set, not every possible parameter combination. Times are milliseconds.
 
 ## Reference and method
 
-- Current resampling refresh: module `baa1cdfd3d8fe6c5fe8cf4289993c17a01a6242d`, host `bda0aab8bd9b366da41e946d41236735bae839af`. Production kernels are unchanged from `aab7884`. Upstream reference: `5c82777b374bdef16e13007a11e77d735ac1e4eb`.
-- Ryzen 9 7940H, Windows x64, clang-cl 22.1.3 Release. All benchmark processes pinned to logical CPU 12 (0x1000). No concurrent build or test work during timing.
-- All 273 full-filter cases in resize, resize-composed, chroma, matrix-filter, interlaced, and yuy2 were remeasured on both DLLs under AVX2 and native, three observations per side/target. Side order and target order alternate between rounds. This includes conservative coverage beyond paths that necessarily execute the changed horizontal branch. The other 249 cases retain valid measurements because their implementations do not call the changed resampling code.
-- All 126 resampling kernel profiles (252 target comparison rows) were rebuilt and remeasured three times, including vertical controls, horizontal axes, non-integer ratios, and two-axis pipelines. This harness measures new AVX2/native then upstream AVX2/AVX512 per profile in a fixed order. All other kernel rows retain their previous valid measurements.
-- AVX2 uses SetMaxCPU("avx2") on both DLLs. Native uses available upstream AVX512 where implemented and module Highway AVX3_ZEN4. Floyd–Steinberg remains C.
-- Full-filter timing includes GetFrame processing and output allocation, excluding input generation, construction, and output hashing. A deterministic source is reused; increasing output frame numbers avoid output-cache hits. No Prefetch. Each observation is the median of five calibrated samples of approximately 15 ms, with 2–100 calls per sample. Three observations are reduced to a median separately for each side. These are warm single-thread measurements, not multithread throughput or constructor benchmarks.
-- Resampling kernel timing excludes allocation and coefficient construction; each observation is the median of five calibrated samples. New output is checked against C before timing. Kernel and full-filter timing scopes must not be mixed.
-- Retained non-resampling full-filter observations have one or three rounds, recorded per row. Retained matrix U8 kernels have five rounds, other matrix/depth/ordered comparisons have three, and layout uses its saved five-sample harness. Their source version is module 6984ce1 / host 287cd4f4; relevant implementations are unchanged. The supplementary 54-profile long-support set uses aab7884 / f9c088cc, also unchanged since measurement.
-- Every refreshed new full-filter hash matches its new none=C baseline in all rounds. Every refreshed new kernel output matches C exactly on the timed inputs, including F32. Upstream outputs can differ due to historical rounding/clipping and corrected semantics; old/new equality is recorded separately. Hashes cover active pixels, excluding padding and frame properties.
-- Cases with either side below 0.005 ms are retained but excluded from aggregate ratios. Ratios are new/upstream elapsed time; below 1 is faster. Medians are medians of case ratios, not a total-runtime speedup. Small differences are not established gains or regressions.
+- AMD refresh: 2026-09-14, Ryzen 9 7940H, Windows x64, clang-cl 22.1.3 Release, pinned to logical CPU 12 (0x1000). One final optimized module build supplies the refreshed measurements. No concurrent build or test work during timing.
+- The refreshed rows replace the corresponding module timings in place: 17 full-filter cases, 0 kernel target rows and 0 supplementary target rows. The fixed host source is `bda0aab8bd9b366da41e946d41236735bae839af`, matching the original harness integration. Local source identities, binary hashes, raw observations and reproduction scripts are recorded in untracked `docs/PERFORMANCE-CURRENT-2026-09-14/`.
+- Upstream reference: `5c82777b374bdef16e13007a11e77d735ac1e4eb`. Its existing measurements are retained unchanged; no upstream code was timed during this refresh. Module and upstream values therefore come from separate sessions on the same AMD machine. Small differences are not established gains or regressions.
+- AVX2 uses SetMaxCPU("avx2") on the module DLL. Native measures the highest available production target, Highway **AVX3_ZEN4**, rather than choosing the fastest measured target. The upstream column uses its saved AVX512 result where implemented. Floyd remains the shared C implementation for both CPU settings.
+- Full-filter timing includes GetFrame processing and output allocation, excluding source generation, construction and output hashing. The original deterministic source and exact expressions are reused; increasing output frame numbers avoid output-cache hits. No Prefetch. Each observation is the median of five calibrated samples of approximately 15 ms, with 2–100 calls per sample. Three observations per module target are reduced to a median; AVX2/native run order alternates between rounds. These are warm single-thread measurements.
+- Resampling kernel timing retains the original buffer geometry, deterministic input, coefficient preparation, call boundary, warmup and five-sample median procedure. Allocation, coefficient construction, C reference execution and output checking are outside timing. Three observations per module target are reduced to a median. The kernel harness runs AVX2 then native and does not execute upstream. Kernel and full-filter scopes must not be mixed.
+- Every refreshed module full-filter hash matches its none=C baseline in all rounds. Every refreshed kernel output matches C exactly, including F32. Equality flags compare refreshed module hashes with saved upstream hashes; upstream can differ due to rounding/clipping and corrected semantics. Hashes cover active pixels, excluding padding and frame properties.
+- Unaffected full-filter observations retain their recorded one or three rounds. Unaffected matrix U8 kernels retain five rounds; other matrix/depth/ordered kernels retain three, layout retains its five-sample harness, and vertical resampling retains its three observations. Unchanged supplementary paths retain three observations. Per-row notes identify their baseline and scope.
+- Cases with either side below 0.005 ms are retained but excluded from aggregate ratios. Ratios are module/upstream elapsed time; below 1 is faster. Medians are medians of case ratios, not a total-runtime speedup. Differences within 5%, or small absolute differences, are treated as measurement noise rather than reasons to disable a target.
 
 ## Full-filter summary
 
@@ -22,7 +21,7 @@ All saved comparison rows are included: **522 full-filter cases**, **584 kernel 
 | chroma | 25 | 1.004 | 0.647–1.390 | 0.943 | 0.692–1.461 |
 | depth | 132 | 1.141 | 0.908–1.506 | 0.994 | 0.837–1.204 |
 | depth-alpha | 13 | 1.067 | 0.976–3.307 | 1.028 | 0.904–2.917 |
-| floyd | 17 | 2.154 | 1.612–2.849 | 2.113 | 1.592–2.739 |
+| floyd | 17 | 1.068 | 0.962–1.262 | 1.035 | 0.944–1.209 |
 | greyscale | 21 | 0.940 | 0.293–1.297 | 0.962 | 0.291–1.304 |
 | interlaced | 9 | 1.007 | 0.215–1.168 | 1.081 | 0.227–1.352 |
 | layout | 23 | 0.955 | 0.126–1.820 | 1.083 | 0.108–1.854 |
@@ -35,7 +34,7 @@ All saved comparison rows are included: **522 full-filter cases**, **584 kernel 
 
 ## Complete full-filter comparisons
 
-Expand each family. CPU cells are **upstream ms / new ms / ratio**; low-work ratios are omitted. Equality is **AVX2 / native** versus upstream. All new outputs match C.
+Expand each family. CPU cells are **upstream ms / new ms / ratio**; low-work ratios are omitted. Equality is **AVX2 / native** versus upstream. All new outputs match C. Observation counts are for the module.
 
 <details>
 <summary>chroma — 36 cases</summary>
@@ -247,23 +246,23 @@ Expand each family. CPU cells are **upstream ms / new ms / ratio**; low-work rat
 
 | Case | Input | Size | Expression | AVX2: old / new / ratio | Native: old / new / ratio | Equal output | Observations AVX2 / native |
 |---|---|---|---|---|---|---|---|
-| floyd-306 | Y10 | 1920×1080 | `src.ConvertBits(8,fulls=true,fulld=true,dither=1,dither_bits=8)` | 5.6087 / 9.6464 / 1.720 | 5.6990 / 9.6798 / 1.699 | True / True | 3 / 3 |
-| floyd-307 | Y10 | 1920×1080 | `src.ConvertBits(8,fulls=false,fulld=true,dither=1,dither_bits=8)` | 6.1734 / 13.6341 / 2.209 | 6.2729 / 13.6930 / 2.183 | True / True | 3 / 3 |
-| floyd-308 | Y16 | 1920×1080 | `src.ConvertBits(8,fulls=true,fulld=true,dither=1,dither_bits=8)` | 5.5793 / 12.0018 / 2.151 | 5.6631 / 12.0061 / 2.120 | True / True | 3 / 3 |
-| floyd-309 | Y16 | 1920×1080 | `src.ConvertBits(8,fulls=false,fulld=true,dither=1,dither_bits=8)` | 6.1718 / 16.9955 / 2.754 | 6.4427 / 16.4715 / 2.557 | True / True | 3 / 3 |
-| floyd-310 | Y16 | 1920×1080 | `src.ConvertBits(10,fulls=true,fulld=true,dither=1,dither_bits=10)` | 5.4962 / 11.6288 / 2.116 | 5.6238 / 11.6945 / 2.079 | True / True | 3 / 3 |
-| floyd-311 | Y16 | 1920×1080 | `src.ConvertBits(10,fulls=false,fulld=true,dither=1,dither_bits=10)` | 6.0377 / 16.7813 / 2.779 | 6.3431 / 16.9326 / 2.669 | True / True | 3 / 3 |
-| floyd-312 | Y16 | 1920×1080 | `src.ConvertBits(16,fulls=true,fulld=true,dither=1,dither_bits=10)` | 5.9955 / 11.6479 / 1.943 | 6.1339 / 11.6249 / 1.895 | True / True | 3 / 3 |
-| floyd-313 | Y16 | 1920×1080 | `src.ConvertBits(16,fulls=false,fulld=true,dither=1,dither_bits=10)` | 5.8914 / 16.7853 / 2.849 | 6.1708 / 16.9033 / 2.739 | True / True | 3 / 3 |
-| floyd-314 | Y8 | 1920×1080 | `src.ConvertBits(8,fulls=true,fulld=true,dither=1,dither_bits=5)` | 6.0797 / 9.7999 / 1.612 | 6.2431 / 9.9367 / 1.592 | True / True | 3 / 3 |
-| floyd-315 | Y8 | 1920×1080 | `src.ConvertBits(8,fulls=false,fulld=true,dither=1,dither_bits=5)` | 8.1021 / 14.7816 / 1.824 | 8.1141 / 14.5277 / 1.790 | True / True | 3 / 3 |
-| floyd-316 | Y10 | 1920×1080 | `src.ConvertBits(10,fulls=true,fulld=true,dither=1,dither_bits=3)` | 6.0278 / 10.1709 / 1.687 | 6.2032 / 10.2028 / 1.645 | True / True | 3 / 3 |
-| floyd-317 | Y10 | 1920×1080 | `src.ConvertBits(10,fulls=false,fulld=true,dither=1,dither_bits=3)` | 7.7917 / 14.5558 / 1.868 | 8.1557 / 14.5486 / 1.784 | True / True | 3 / 3 |
-| floyd-318 | YUV444P16 | 1920×1080 | `src.ConvertBits(8,fulls=true,fulld=true,dither=1,dither_bits=8)` | 16.6596 / 35.9136 / 2.156 | 17.0280 / 35.8910 / 2.108 | True / True | 3 / 3 |
-| floyd-319 | YUV444P16 | 1920×1080 | `src.ConvertBits(8,fulls=false,fulld=true,dither=1,dither_bits=8)` | 18.5018 / 48.4629 / 2.619 | 19.2703 / 48.4004 / 2.512 | True / True | 3 / 3 |
-| floyd-320 | RGBAP16 | 1920×1080 | `src.ConvertBits(8,fulls=true,fulld=true,dither=1,dither_bits=8)` | 16.8681 / 36.3633 / 2.156 | 17.2342 / 36.4087 / 2.113 | True / True | 3 / 3 |
-| floyd-321 | RGBAP16 | 1920×1080 | `src.ConvertBits(8,fulls=false,fulld=true,dither=1,dither_bits=8)` | 18.6826 / 49.9410 / 2.673 | 19.6817 / 50.8556 / 2.584 | True / True | 3 / 3 |
-| floyd-471 | Y16 | 3840×2160 | `src.ConvertBits(8,dither=1)` | 21.8065 / 46.9733 / 2.154 | 22.4093 / 48.5817 / 2.168 | True / True | 3 / 3 |
+| floyd-306 | Y10 | 1920×1080 | `src.ConvertBits(8,fulls=true,fulld=true,dither=1,dither_bits=8)` | 5.6087 / 5.8813 / 1.049 | 5.6990 / 5.8277 / 1.023 | True / True | 3 / 3 |
+| floyd-307 | Y10 | 1920×1080 | `src.ConvertBits(8,fulls=false,fulld=true,dither=1,dither_bits=8)` | 6.1734 / 7.6466 / 1.239 | 6.2729 / 7.5853 / 1.209 | True / True | 3 / 3 |
+| floyd-308 | Y16 | 1920×1080 | `src.ConvertBits(8,fulls=true,fulld=true,dither=1,dither_bits=8)` | 5.5793 / 5.7588 / 1.032 | 5.6631 / 5.7995 / 1.024 | True / True | 3 / 3 |
+| floyd-309 | Y16 | 1920×1080 | `src.ConvertBits(8,fulls=false,fulld=true,dither=1,dither_bits=8)` | 6.1718 / 7.4475 / 1.207 | 6.4427 / 7.4325 / 1.154 | True / True | 3 / 3 |
+| floyd-310 | Y16 | 1920×1080 | `src.ConvertBits(10,fulls=true,fulld=true,dither=1,dither_bits=10)` | 5.4962 / 5.8682 / 1.068 | 5.6238 / 5.8232 / 1.035 | True / True | 3 / 3 |
+| floyd-311 | Y16 | 1920×1080 | `src.ConvertBits(10,fulls=false,fulld=true,dither=1,dither_bits=10)` | 6.0377 / 7.4473 / 1.233 | 6.3431 / 7.4487 / 1.174 | True / True | 3 / 3 |
+| floyd-312 | Y16 | 1920×1080 | `src.ConvertBits(16,fulls=true,fulld=true,dither=1,dither_bits=10)` | 5.9955 / 5.7655 / 0.962 | 6.1339 / 5.8110 / 0.947 | True / True | 3 / 3 |
+| floyd-313 | Y16 | 1920×1080 | `src.ConvertBits(16,fulls=false,fulld=true,dither=1,dither_bits=10)` | 5.8914 / 7.4334 / 1.262 | 6.1708 / 7.4127 / 1.201 | True / True | 3 / 3 |
+| floyd-314 | Y8 | 1920×1080 | `src.ConvertBits(8,fulls=true,fulld=true,dither=1,dither_bits=5)` | 6.0797 / 5.9032 / 0.971 | 6.2431 / 5.8959 / 0.944 | True / True | 3 / 3 |
+| floyd-315 | Y8 | 1920×1080 | `src.ConvertBits(8,fulls=false,fulld=true,dither=1,dither_bits=5)` | 8.1021 / 9.2334 / 1.140 | 8.1141 / 9.2313 / 1.138 | True / True | 3 / 3 |
+| floyd-316 | Y10 | 1920×1080 | `src.ConvertBits(10,fulls=true,fulld=true,dither=1,dither_bits=3)` | 6.0278 / 5.9845 / 0.993 | 6.2032 / 6.0117 / 0.969 | True / True | 3 / 3 |
+| floyd-317 | Y10 | 1920×1080 | `src.ConvertBits(10,fulls=false,fulld=true,dither=1,dither_bits=3)` | 7.7917 / 9.5640 / 1.227 | 8.1557 / 9.4681 / 1.161 | True / True | 3 / 3 |
+| floyd-318 | YUV444P16 | 1920×1080 | `src.ConvertBits(8,fulls=true,fulld=true,dither=1,dither_bits=8)` | 16.6596 / 17.4370 / 1.047 | 17.0280 / 17.3366 / 1.018 | True / True | 3 / 3 |
+| floyd-319 | YUV444P16 | 1920×1080 | `src.ConvertBits(8,fulls=false,fulld=true,dither=1,dither_bits=8)` | 18.5018 / 22.5866 / 1.221 | 19.2703 / 22.6047 / 1.173 | True / True | 3 / 3 |
+| floyd-320 | RGBAP16 | 1920×1080 | `src.ConvertBits(8,fulls=true,fulld=true,dither=1,dither_bits=8)` | 16.8681 / 17.7663 / 1.053 | 17.2342 / 17.7138 / 1.028 | True / True | 3 / 3 |
+| floyd-321 | RGBAP16 | 1920×1080 | `src.ConvertBits(8,fulls=false,fulld=true,dither=1,dither_bits=8)` | 18.6826 / 22.6129 / 1.210 | 19.6817 / 22.5448 / 1.145 | True / True | 3 / 3 |
+| floyd-471 | Y16 | 3840×2160 | `src.ConvertBits(8,dither=1)` | 21.8065 / 22.8627 / 1.048 | 22.4093 / 22.9646 / 1.025 | True / True | 3 / 3 |
 
 </details>
 
@@ -665,7 +664,7 @@ Expand each family. CPU cells are **upstream ms / new ms / ratio**; low-work rat
 
 ## Complete kernel comparisons
 
-Allocation and coefficient construction are outside these timings. Baseline and notes identify the actual upstream implementation. Native resampling uses the upstream AVX512 baseline.
+Allocation and coefficient construction are outside these timings. Baseline and notes identify the actual upstream implementation. Native resampling uses the saved upstream AVX512 baseline.
 
 <details>
 <summary>depth — 112 rows</summary>
@@ -1301,7 +1300,7 @@ Allocation and coefficient construction are outside these timings. Baseline and 
 
 ## Supplementary long-support measurements
 
-These retained measurements use the same current production kernels, at module aab7884 / host f9c088cc. Upstream was retimed alongside that DLL, three observations per side/target, each the median of five calibrated samples. Input is 1920×1080; H output is 960×1080, V is 1920×540, HV is 960×540. The profile number is taps; SincLin2 defaults to 15. Y32 denotes F32. All new outputs match C; old/new F32 can differ. These profiles overlap the main table, and independent measurement sessions need not yield identical times.
+Current module timings for these full-filter profiles are compared with their saved upstream baselines. Refreshed horizontal paths use the same five-sample harness and three module observations per target; unchanged vertical paths retain their measurements. Input is 1920×1080; H output is 960×1080, V is 1920×540, HV is 960×540. The profile number is taps; SincLin2 defaults to 15. Y32 denotes F32. All new outputs match C; upstream F32 can differ. These profiles overlap the main table, and independent measurement sessions need not yield identical times.
 
 | Profile | CPU | Upstream ms | New ms | New / upstream |
 |---|---|---|---|---|

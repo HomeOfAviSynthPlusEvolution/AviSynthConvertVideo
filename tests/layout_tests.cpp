@@ -234,6 +234,61 @@ TEST(LayoutBounds, SinglePixelUsesExactlyThreeComponents) {
   EXPECT_EQ(output, input);
 }
 
+TEST(LayoutBounds, U16UnpackAlignedPrefixRespectsRowsAndChannelPhases) {
+  std::vector<int64_t> targets{VC_TARGET_C};
+  for (int64_t mask = vc_layout_supported_targets(); mask; mask &= mask - 1)
+    targets.push_back(mask & -mask);
+  for (const int64_t target : targets)
+    for (int width : {1, 31, 32, 33, 47, 63, 64, 65, 97})
+      for (int phase : {0, 1, 8, 16, 24, 31})
+        for (bool alpha : {false, true})
+          for (bool mixed_phase : {false, true}) {
+            SCOPED_TRACE(testing::Message()
+                         << target << ": " << width << ", " << phase << ", " << alpha << ", " << mixed_phase);
+            constexpr int height = 3;
+            constexpr uint16_t guard = 0xA5A5;
+            const int pitch = (width + 31) & ~31;
+            std::vector<uint16_t> packed(width * 4 * height);
+            std::array<std::vector<uint16_t>, 4> planes, expected;
+            std::array<uint16_t*, 4> data;
+            for (int c = 0; c < 4; ++c) {
+              planes[c].assign(pitch * height + 96, guard);
+              const uintptr_t aligned = (reinterpret_cast<uintptr_t>(planes[c].data()) + 63) & ~uintptr_t(63);
+              data[c] = reinterpret_cast<uint16_t*>(aligned) + phase + (mixed_phase && c == 2);
+              expected[c] = planes[c];
+            }
+            for (int y = 0; y < height; ++y)
+              for (int x = 0; x < width; ++x)
+                for (int c = 0; c < 4; ++c)
+                  packed[(y * width + x) * 4 + c] = sample<uint16_t>(x, y, c);
+            const auto original = packed;
+            // Reverse the views and process only the middle row. Every source
+            // row is exact-sized, including the last allocation boundary.
+            auto plane = [&](int c) {
+              return vc_plane{data[c] + 2 * pitch, -ptrdiff_t(pitch * 2)};
+            };
+            vc_rgb_planes output{plane(2), plane(1), plane(0), alpha ? plane(3) : vc_plane{}};
+            const auto* functions = vc_get_layout_functions(target);
+            ASSERT_NE(functions, nullptr);
+            ASSERT_EQ(functions->unpack_bgr({packed.data() + 2 * width * 4, -ptrdiff_t(width * 8)}, output, VC_U16, 4,
+                                            0, {width, height, 1, 1}),
+                      VC_OK);
+            for (int c = 0; c < (alpha ? 4 : 3); ++c)
+              for (int x = 0; x < width; ++x)
+                expected[c][data[c] - planes[c].data() + pitch + x] = sample<uint16_t>(x, 1, c);
+            EXPECT_EQ(planes, expected);
+            // Also reach the exact end of the packed allocation.
+            ASSERT_EQ(functions->unpack_bgr({packed.data() + 2 * width * 4, -ptrdiff_t(width * 8)}, output, VC_U16, 4,
+                                            0, {width, height, 0, 1}),
+                      VC_OK);
+            for (int c = 0; c < (alpha ? 4 : 3); ++c)
+              for (int x = 0; x < width; ++x)
+                expected[c][data[c] - planes[c].data() + 2 * pitch + x] = sample<uint16_t>(x, 2, c);
+            EXPECT_EQ(planes, expected);
+            EXPECT_EQ(packed, original);
+          }
+}
+
 TEST(LayoutDispatch, CNativeAndTargetValidation) {
   const auto* c = vc_get_layout_functions(VC_TARGET_C);
   ASSERT_NE(c, nullptr);

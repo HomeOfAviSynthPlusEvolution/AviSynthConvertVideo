@@ -29,7 +29,29 @@ void UnpackBgr(vc_const_plane source, vc_rgb_planes destination, T fill, vc_rows
     T* b = Row<T>(destination.b, y);
     T* a = destination.a.data ? Row<T>(destination.a, y) : nullptr;
     size_t x = 0;
-    for (; x < end; x += lanes) {
+    size_t aligned_end = end;
+#if HWY_TARGET == HWY_AVX3_SPR
+    if constexpr (Components == 4 && sizeof(T) == 2) {
+      const size_t bytes = lanes * sizeof(T);
+      const size_t phase = reinterpret_cast<uintptr_t>(b) % bytes;
+      if (phase && width >= lanes && reinterpret_cast<uintptr_t>(r) % bytes == phase &&
+          reinterpret_cast<uintptr_t>(g) % bytes == phase && (!a || reinterpret_cast<uintptr_t>(a) % bytes == phase)) {
+        // SPR split channel stores stall the packed-alpha row pipeline. A full
+        // valid prefix block lets subsequent stores stay within cache lines.
+        // Overlap only repeats output samples; no access extends past the row.
+        auto vb = hn::Zero(d), vg = vb, vr = vb, va = vb;
+        hn::LoadInterleaved4(d, src, vb, vg, vr, va);
+        hn::StoreU(vb, d, b);
+        hn::StoreU(vg, d, g);
+        hn::StoreU(vr, d, r);
+        if (a)
+          hn::StoreU(va, d, a);
+        x = (bytes - phase) / sizeof(T);
+        aligned_end = x + (width - x) / lanes * lanes;
+      }
+    }
+#endif
+    for (; x < aligned_end; x += lanes) {
       auto vb = hn::Zero(d), vg = vb, vr = vb, va = hn::Set(d, fill);
       if constexpr (Components == 3)
         hn::LoadInterleaved3(d, src + x * Components, vb, vg, vr);

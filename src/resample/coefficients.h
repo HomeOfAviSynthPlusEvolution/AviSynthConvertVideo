@@ -40,7 +40,7 @@ struct HorizontalPacking {
   std::vector<int16_t> dot_weights;
   std::vector<HorizontalBlock> blocks;
   std::vector<int32_t> indices, integer_weights;
-  std::vector<float> float_weights;
+  std::vector<float, AlignedAllocator<float>> float_weights;
   std::vector<int16_t, AlignedAllocator<int16_t>> pair_indices, pair_weights;
 };
 

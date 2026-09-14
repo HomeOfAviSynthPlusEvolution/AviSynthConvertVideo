@@ -165,45 +165,83 @@ TEST(OrderedContract, LowDepthRoundingAcrossAllProfilesAndTargets) {
     for (int q = 1; q < 8; ++q) {
       if (sb - q > 8)
         continue;
-      for (int db = 8; db <= sb; ++db) {
-        SCOPED_TRACE(testing::Message() << sb << " -> " << db << ", q=" << q);
-        const int full = (sb + db + q) & 1;
-        const vc_ordered_config config{{sb, db, full, full, q & 1}, q};
-        // Every quantized code, neighboring half-step inputs, and every Bayer
-        // position. The extra code also exercises upper clipping. Odd width
-        // reaches the scalar tail; exact allocations expose vector overreads.
-        const int width = ((1 << q) + 1) * 48 + 1, height = 16;
-        const int sbytes = sb == 8 ? 1 : 2, dbytes = db == 8 ? 1 : 2;
-        const int divisor = 1 << (sb - q), maximum = sbytes == 1 ? 255 : 65535;
-        std::vector<uint16_t> input(width * height * sbytes / 2);
-        std::vector<uint16_t> reference(width * height * dbytes / 2), output(reference.size());
-        for (int y = 0; y < height; ++y)
-          for (int x = 0; x < width; ++x) {
-            const int code = x / 48, delta = (x / 16) % 3 - 1;
-            const int value = std::min(code * divisor + divisor / 2 + delta, maximum);
-            if (sbytes == 1)
-              reinterpret_cast<uint8_t*>(input.data())[y * width + x] = uint8_t(value);
-            else
-              input[y * width + x] = uint16_t(value);
+      for (int db = 8; db <= sb; ++db)
+        for (int mode : {0, 1, 2}) {
+          SCOPED_TRACE(testing::Message() << sb << " -> " << db << ", q=" << q << ", range=" << mode);
+          const int full = (sb + db + q) & 1;
+          const vc_ordered_config config{{sb, db, mode == 0 ? full : mode == 2, mode == 0 ? full : mode == 1, q & 1},
+                                         q};
+          // Every quantized code, neighboring half-step inputs, and every Bayer
+          // position. The extra code also exercises upper clipping. Odd width
+          // reaches the scalar tail; exact allocations expose vector overreads.
+          const int width = ((1 << q) + 1) * 48 + 1, height = 16;
+          const int sbytes = sb == 8 ? 1 : 2, dbytes = db == 8 ? 1 : 2;
+          const int divisor = 1 << (sb - q), maximum = sbytes == 1 ? 255 : 65535;
+          std::vector<uint16_t> input(width * height * sbytes / 2);
+          std::vector<uint16_t> reference(width * height * dbytes / 2), output(reference.size());
+          for (int y = 0; y < height; ++y)
+            for (int x = 0; x < width; ++x) {
+              const int code = x / 48, delta = (x / 16) % 3 - 1;
+              const int value = std::min(code * divisor + divisor / 2 + delta, maximum);
+              if (sbytes == 1)
+                reinterpret_cast<uint8_t*>(input.data())[y * width + x] = uint8_t(value);
+              else
+                input[y * width + x] = uint16_t(value);
+            }
+          vc_ordered_plan* raw = nullptr;
+          ASSERT_EQ(vc_ordered_create(&config, &raw), VC_OK);
+          Plan cp(raw, vc_ordered_destroy);
+          ASSERT_EQ(vc_ordered_execute(cp.get(), {input.data(), width * sbytes}, {reference.data(), width * dbytes},
+                                       {width, height, 0, height}),
+                    VC_OK);
+          for (int64_t target : targets) {
+            SCOPED_TRACE(target);
+            ASSERT_EQ(vc_ordered_create_for_target(&config, target, &raw), VC_OK);
+            Plan hp(raw, vc_ordered_destroy);
+            std::fill(output.begin(), output.end(), 0xA5A5);
+            for (int y = height - 1; y >= 0; --y)
+              ASSERT_EQ(vc_ordered_execute(hp.get(), {input.data(), width * sbytes}, {output.data(), width * dbytes},
+                                           {width, height, y, 1}),
+                        VC_OK);
+            EXPECT_EQ(reference, output);
           }
-        vc_ordered_plan* raw = nullptr;
-        ASSERT_EQ(vc_ordered_create(&config, &raw), VC_OK);
-        Plan cp(raw, vc_ordered_destroy);
-        ASSERT_EQ(vc_ordered_execute(cp.get(), {input.data(), width * sbytes}, {reference.data(), width * dbytes},
-                                     {width, height, 0, height}),
-                  VC_OK);
-        for (int64_t target : targets) {
-          SCOPED_TRACE(target);
-          ASSERT_EQ(vc_ordered_create_for_target(&config, target, &raw), VC_OK);
-          Plan hp(raw, vc_ordered_destroy);
-          std::fill(output.begin(), output.end(), 0xA5A5);
-          for (int y = height - 1; y >= 0; --y)
-            ASSERT_EQ(vc_ordered_execute(hp.get(), {input.data(), width * sbytes}, {output.data(), width * dbytes},
-                                         {width, height, y, 1}),
-                      VC_OK);
-          EXPECT_EQ(reference, output);
         }
-      }
     }
+}
+
+TEST(OrderedContract, RangeMappingAllTargetsExactRowsAndNegativeStride) {
+  std::vector<int64_t> targets;
+  for (int64_t mask = vc_ordered_supported_targets(); mask; mask &= mask - 1)
+    targets.push_back(mask & -mask);
+  for (int bits : {10, 16})
+    for (int full : {0, 1})
+      for (int chroma : {0, 1})
+        for (int width : {1, 15, 16, 17, 31, 32, 33, 127, 128, 129, 257, 513}) {
+          const vc_ordered_config config{{bits, 8, full, !full, chroma}, 8};
+          std::vector<uint16_t> input(width * 3);
+          std::vector<uint8_t> reference(width * 3, 0xA5), output(reference);
+          for (size_t x = 0; x < input.size(); ++x)
+            input[x] = uint16_t((x * 7919 + 32767) & 65535);
+          const vc_const_plane source{input.data() + width * 2, -ptrdiff_t(width * 2)};
+          vc_ordered_plan* raw = nullptr;
+          ASSERT_EQ(vc_ordered_create(&config, &raw), VC_OK);
+          Plan cp(raw, vc_ordered_destroy);
+          for (int y : {2, 0})
+            ASSERT_EQ(vc_ordered_execute(cp.get(), source, {reference.data() + width * 2, -ptrdiff_t(width)},
+                                         {width, 3, y, 1}),
+                      VC_OK);
+          for (int64_t target : targets) {
+            SCOPED_TRACE(testing::Message()
+                         << bits << ", " << full << ", " << chroma << ", " << width << ", " << target);
+            ASSERT_EQ(vc_ordered_create_for_target(&config, target, &raw), VC_OK);
+            Plan hp(raw, vc_ordered_destroy);
+            std::fill(output.begin(), output.end(), 0xA5);
+            for (int y : {2, 0})
+              ASSERT_EQ(vc_ordered_execute(hp.get(), source, {output.data() + width * 2, -ptrdiff_t(width)},
+                                           {width, 3, y, 1}),
+                        VC_OK);
+            EXPECT_EQ(reference, output);
+          }
+        }
 }
 } // namespace

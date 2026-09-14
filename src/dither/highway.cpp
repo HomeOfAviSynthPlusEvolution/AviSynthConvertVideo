@@ -2,6 +2,7 @@
 // Licensed under GPL version 2 or later with the inherited AviSynth linking exception.
 #include "dither/ordered.h"
 #include "layout/buffer.h"
+#include <hwy/cache_control.h>
 #include <hwy/targets.h>
 #undef HWY_TARGET_INCLUDE
 #define HWY_TARGET_INCLUDE "dither/highway.cpp"
@@ -12,67 +13,10 @@ namespace vc {
 namespace HWY_NAMESPACE {
 namespace hn = hwy::HWY_NAMESPACE;
 #if HWY_TARGET != HWY_SCALAR && HWY_TARGET != HWY_EMU128
-template <class S, class D, bool remap, bool low>
-void Ordered(const vc_ordered_plan& p, vc_const_plane source, vc_plane destination, vc_rows rows) {
-  const hn::CappedTag<int32_t, 16> di;
-  const hn::Rebind<float, decltype(di)> df;
-  const hn::Rebind<S, decltype(di)> ds;
-  const hn::Rebind<D, decltype(di)> dd;
-  const size_t n = hn::Lanes(di), width = size_t(rows.width);
-  const auto zero = hn::Zero(di), ceiling = hn::Set(di, p.output_max);
-  const auto srcmax = hn::Set(di, (1 << p.config.depth.source_bits) - 1);
-  const auto qmax = hn::Set(di, p.quantized_max);
-  const auto src_offset = hn::Set(df, p.range.source_offset), factor = hn::Set(df, p.range.factor);
-  const auto dst_offset = hn::Set(df, p.range.destination_offset + .5f);
-  const auto center = hn::Set(df, float((1 << p.shift) - 1) * .5f);
-  const auto backscale = hn::Set(df, p.backscale), half = hn::Set(df, .5f);
-  for (int y = rows.first_row; y < rows.first_row + rows.row_count; ++y) {
-    const auto* src = Row<S>(source, y);
-    auto* dst = Row<D>(destination, y);
-    size_t x = 0;
-    auto quantize = [&](size_t at) HWY_ATTR {
-      auto value = hn::PromoteTo(di, hn::LoadU(ds, src + at));
-      if constexpr (remap) {
-        const auto scaled = hn::Mul(hn::Sub(hn::ConvertTo(df, value), src_offset), factor);
-        value = hn::Min(hn::Max(hn::ConvertInRangeTo(di, hn::Add(scaled, dst_offset)), zero), srcmax);
-      }
-      const auto corr = hn::LoadU(di, p.thresholds.data() + (y & 15) * 32 + (at & 15));
-      auto sum = hn::Add(value, corr);
-      if constexpr (low)
-        sum = hn::ConvertInRangeTo(di, hn::Sub(hn::ConvertTo(df, sum), center));
-      auto q = hn::ShiftRightSame(sum, p.shift);
-      if (p.config.depth.destination_bits != p.config.quantization_bits) {
-        q = hn::Min(q, qmax);
-        if constexpr (low)
-          q = hn::ConvertInRangeTo(di, hn::Add(hn::Mul(hn::ConvertTo(df, q), backscale), half));
-        else
-          q = hn::ShiftLeftSame(q, p.config.depth.destination_bits - p.config.quantization_bits);
-      }
-      return hn::Min(hn::Max(q, zero), ceiling);
-    };
-    if constexpr (sizeof(D) == 1) {
-      const hn::Repartition<int16_t, decltype(di)> d16;
-      const hn::Repartition<uint8_t, decltype(di)> d8;
-      for (; x + 4 * n <= width; x += 4 * n) {
-        const auto a = hn::OrderedDemote2To(d16, quantize(x), quantize(x + n));
-        const auto b = hn::OrderedDemote2To(d16, quantize(x + 2 * n), quantize(x + 3 * n));
-        hn::StoreU(hn::OrderedDemote2To(d8, a, b), d8, dst + x);
-      }
-    } else {
-      const hn::Repartition<uint16_t, decltype(di)> d16;
-      for (; x + 2 * n <= width; x += 2 * n)
-        hn::StoreU(hn::OrderedDemote2To(d16, quantize(x), quantize(x + n)), d16, dst + x);
-    }
-    for (; x + n <= width; x += n)
-      hn::StoreU(hn::DemoteTo(dd, quantize(x)), dd, dst + x);
-    for (; x < width; ++x)
-      dst[x] = static_cast<D>(dither::Quantize(p, src[x], int(x), y));
-  }
-}
 // Ordinary ordered reduction never needs signed or floating lanes. Saturating
 // the addition at 65535 is exact after the quantized-code ceiling is applied.
-template <class S, class D, bool low = false>
-void OrderedInteger(const vc_ordered_plan& p, vc_const_plane source, vc_plane destination, vc_rows rows) {
+template <class S, class D, bool low = false, bool remap = false>
+void Ordered(const vc_ordered_plan& p, vc_const_plane source, vc_plane destination, vc_rows rows) {
   using D16 = hn::CappedTag<uint16_t, 32>;
   using V16 = hn::VFromD<D16>;
   const D16 d;
@@ -83,6 +27,13 @@ void OrderedInteger(const vc_ordered_plan& p, vc_const_plane source, vc_plane de
   const auto center = hn::Set(d, uint16_t(1 << (p.shift - 1)));
   const auto scale_integer = hn::Set(di, p.low_scale_integer);
   const auto scale_fraction = hn::Set(di, p.low_scale_fraction);
+  const hn::Repartition<int32_t, decltype(d)> di32;
+  const hn::Rebind<float, decltype(di32)> df32;
+  const hn::Rebind<S, decltype(di32)> half_source;
+  const auto source_max = hn::Set(di32, (1 << p.config.depth.source_bits) - 1);
+  const auto source_offset = hn::Set(df32, p.range.source_offset);
+  const auto range_factor = hn::Set(df32, p.range.factor);
+  const auto destination_offset = hn::Set(df32, p.range.destination_offset + .5f);
   const int backshift = p.config.depth.destination_bits - p.config.quantization_bits;
   for (int y = rows.first_row; y < rows.first_row + rows.row_count; ++y) {
     const auto* src = Row<S>(source, y);
@@ -90,7 +41,15 @@ void OrderedInteger(const vc_ordered_plan& p, vc_const_plane source, vc_plane de
     size_t x = 0;
     auto quantize = [&](size_t at) HWY_ATTR {
       V16 value;
-      if constexpr (sizeof(S) == 1)
+      if constexpr (remap) {
+        auto map = [&](size_t index) HWY_ATTR {
+          const auto input = hn::PromoteTo(di32, hn::LoadU(half_source, src + index));
+          const auto scaled = hn::Mul(hn::Sub(hn::ConvertTo(df32, input), source_offset), range_factor);
+          return hn::Min(hn::Max(hn::ConvertInRangeTo(di32, hn::Add(scaled, destination_offset)), hn::Zero(di32)),
+                         source_max);
+        };
+        value = hn::OrderedDemote2To(d, map(at), map(at + n / 2));
+      } else if constexpr (sizeof(S) == 1)
         value = hn::PromoteTo(d, hn::LoadU(ds, src + at));
       else
         value = hn::LoadU(d, src + at);
@@ -110,9 +69,17 @@ void OrderedInteger(const vc_ordered_plan& p, vc_const_plane source, vc_plane de
     if constexpr (sizeof(D) == 1) {
       const hn::Repartition<uint8_t, decltype(d)> d8;
       const hn::Rebind<int16_t, decltype(d)> di16;
-      for (; x + 2 * n <= width; x += 2 * n)
+      for (; x + 2 * n <= width; x += 2 * n) {
+#if HWY_TARGET == HWY_AVX2
+        // The narrower remap loop can expose L2-to-L1 input latency on SPR.
+        // Touch each upcoming cache line once, with the address inside the row.
+        if constexpr (remap && !low && sizeof(S) == 2)
+          if (x + 8 * n < width)
+            hwy::Prefetch(src + x + 8 * n);
+#endif
         hn::StoreU(hn::OrderedDemote2To(d8, hn::BitCast(di16, quantize(x)), hn::BitCast(di16, quantize(x + n))), d8,
                    dst + x);
+      }
       const hn::Rebind<uint8_t, decltype(d)> half8;
       for (; x + n <= width; x += n)
         hn::StoreU(hn::DemoteTo(half8, quantize(x)), half8, dst + x);
@@ -127,8 +94,8 @@ void OrderedInteger(const vc_ordered_plan& p, vc_const_plane source, vc_plane de
 template <class S, class D>
 dither::RowKernel ChooseOrderedFlags(const vc_ordered_config& c) {
   if (c.depth.source_full != c.depth.destination_full)
-    return c.quantization_bits < 8 ? Ordered<S, D, true, true> : Ordered<S, D, true, false>;
-  return c.quantization_bits < 8 ? OrderedInteger<S, D, true> : OrderedInteger<S, D>;
+    return c.quantization_bits < 8 ? Ordered<S, D, true, true> : Ordered<S, D, false, true>;
+  return c.quantization_bits < 8 ? Ordered<S, D, true> : Ordered<S, D>;
 }
 dither::RowKernel ChooseOrdered(const vc_ordered_config& c) {
   if (c.depth.source_bits == 8)

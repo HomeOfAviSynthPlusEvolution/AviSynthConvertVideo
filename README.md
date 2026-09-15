@@ -65,27 +65,27 @@ The CI workflow covers Windows x64 and ARM64 with MSVC and clang-cl, Linux x64 a
 
 The Windows x64 Release configuration contains **4,199 tests**, including a C interface test.
 
-All measured results are in [PERFORMANCE.md](PERFORMANCE.md): **522 full-filter cases**, **584 kernel comparison rows**, and **108 supplementary long-support rows**. Supplementary profiles overlap the main audit. The following table covers every measured family. Ratios are **new / upstream time**; below 1 means faster. Medians are case-ratio medians, not a total-runtime speedup. Low-work cases are excluded.
+All measured results are in [PERFORMANCE.md](PERFORMANCE.md): **522 full-filter cases**, **592 kernel comparison rows**, and **108 supplementary long-support rows**. Supplementary profiles overlap the main audit. The following table covers every measured family. Ratios are **new / upstream time**; below 1 means faster. Medians are case-ratio medians, not a total-runtime speedup. Low-work cases are excluded.
 
 | Family | Nontrivial cases | AVX2 median | AVX2 range | Native median | Native range |
 |---|---|---|---|---|---|
-| chroma | 25 | 1.004 | 0.647–1.390 | 0.943 | 0.692–1.461 |
-| depth | 132 | 1.141 | 0.908–1.506 | 0.994 | 0.837–1.204 |
+| chroma | 25 | 0.923 | 0.542–1.304 | 0.822 | 0.612–1.101 |
+| depth | 132 | 1.141 | 0.379–1.506 | 0.994 | 0.334–1.204 |
 | depth-alpha | 13 | 1.067 | 0.976–3.307 | 1.028 | 0.904–2.917 |
-| floyd | 17 | 2.154 | 1.612–2.849 | 2.113 | 1.592–2.739 |
-| greyscale | 21 | 0.940 | 0.293–1.297 | 0.962 | 0.291–1.304 |
-| interlaced | 9 | 1.007 | 0.215–1.168 | 1.081 | 0.227–1.352 |
-| layout | 23 | 0.955 | 0.126–1.820 | 1.083 | 0.108–1.854 |
-| luma | 15 | 0.906 | 0.598–1.047 | 0.869 | 0.592–1.325 |
-| matrix-filter | 54 | 1.056 | 0.730–1.834 | 0.974 | 0.610–1.460 |
-| ordered | 16 | 1.151 | 0.735–1.705 | 0.967 | 0.630–1.323 |
-| resize | 144 | 1.028 | 0.284–2.875 | 0.960 | 0.406–1.770 |
-| resize-composed | 19 | 1.008 | 0.599–1.644 | 0.879 | 0.475–1.068 |
-| yuy2 | 11 | 0.894 | 0.249–1.250 | 0.891 | 0.224–1.222 |
+| floyd | 17 | 1.049 | 0.844–1.262 | 1.025 | 0.830–1.209 |
+| greyscale | 21 | 0.900 | 0.293–1.297 | 0.902 | 0.257–1.304 |
+| interlaced | 9 | 0.992 | 0.206–1.132 | 0.975 | 0.211–1.137 |
+| layout | 23 | 0.955 | 0.126–1.820 | 1.052 | 0.108–1.578 |
+| luma | 15 | 0.906 | 0.598–1.047 | 0.867 | 0.512–1.009 |
+| matrix-filter | 54 | 1.011 | 0.666–1.825 | 0.884 | 0.539–1.285 |
+| ordered | 16 | 0.970 | 0.306–1.330 | 0.876 | 0.249–1.097 |
+| resize | 144 | 0.996 | 0.316–1.609 | 0.819 | 0.412–1.097 |
+| resize-composed | 19 | 0.992 | 0.559–1.605 | 0.787 | 0.404–0.952 |
+| yuy2 | 11 | 0.847 | 0.202–1.218 | 0.829 | 0.211–1.131 |
 
 Ryzen 9 7940H, Windows x64, clang-cl 22.1.3 Release, pinned logical CPU 12. Upstream reference: `5c82777b374bdef16e13007a11e77d735ac1e4eb`, native AVX512 where available; module native uses Highway `AVX3_ZEN4`. Full-filter times include GetFrame and output allocation. [Complete tables](PERFORMANCE.md) provide both times, exact workloads, versions, and output-equality qualifications. All measured module outputs match C; some upstream outputs differ numerically.
 
-Performance depends on format, support width, CPU, and compiler. Long-support horizontal resampling and Floyd–Steinberg retain known performance gaps against upstream implementations on some workloads.
+Performance depends on format, support width, CPU, and compiler. Refreshed Floyd–Steinberg full-filter medians are close to upstream; some individual workloads remain slower. Resampling results vary by format, support width and CPU target.
 
 Compare equivalent inputs, compiler options, CPU restrictions, and timing scopes. Kernel-only timings and complete-filter timings are different measurements. Wider SIMD targets do not guarantee higher speed. Performance reports should include output comparisons as well as timings.
 

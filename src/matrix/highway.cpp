@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <type_traits>
 #include <hwy/targets.h>
+#include <hwy/cache_control.h>
 #undef HWY_TARGET_INCLUDE
 #define HWY_TARGET_INCLUDE "matrix/highway.cpp"
 #include <hwy/foreach_target.h>
@@ -270,6 +271,16 @@ void MatrixFloat(const matrix::Config& config, const matrix::Coefficients& m,
                                {forward ? m.v_b_f : m.y_r_f, forward ? m.v_g_f : m.u_r_f, m.v_r_f}};
   const hn::ScalableTag<float> d;
   const size_t lanes = hn::Lanes(d), width = size_t(rows.width);
+  bool stream = false;
+  if constexpr (outputs == 3) {
+    // Small cached frames and partial-cache-line AVX2 streams regressed in
+    // controlled tests. Use full cache-line streams only for large row bands.
+    stream = lanes * sizeof(float) == 64 && uint64_t(rows.width) * rows.row_count * sizeof(float) >= 4 * 1024 * 1024 &&
+             rows.width % 16 == 0;
+    for (int c = 0; c < outputs; ++c)
+      stream = stream && reinterpret_cast<uintptr_t>(destination[c].data) % 64 == 0 && destination[c].stride % 64 == 0;
+  }
+
   for (int y = rows.first_row; y < rows.first_row + rows.row_count; ++y) {
     const float* src[3] = {Row<float>(source[0], y), Row<float>(source[1], y), Row<float>(source[2], y)};
     float* dst[outputs];
@@ -334,10 +345,18 @@ void MatrixFloat(const matrix::Config& config, const matrix::Coefficients& m,
         sum = hn::Add(sum, hn::Set(d, forward ? (c == 0 ? m.offset_y_f : 0.f) : m.offset_rgb_f));
         const auto lo = hn::Set(d, forward && c > 0 ? -.5f : 0.f);
         const auto hi = hn::Set(d, forward && c > 0 ? .5f : 1.f);
+#if HWY_MAX_BYTES >= 64
+        const auto value = outputs == 1 || config.preserve_float_range ? sum : hn::Min(hn::Max(sum, lo), hi);
+        if (stream)
+          hn::Stream(value, d, dst[c] + x);
+        else
+          hn::StoreU(value, d, dst[c] + x);
+#else
         if (outputs == 1 || config.preserve_float_range)
           hn::StoreU(sum, d, dst[c] + x);
         else
           hn::StoreU(hn::Min(hn::Max(sum, lo), hi), d, dst[c] + x);
+#endif
       }
     }
     for (; x < width; ++x) {
@@ -360,6 +379,8 @@ void MatrixFloat(const matrix::Config& config, const matrix::Coefficients& m,
       }
     }
   }
+  if (stream)
+    hwy::FlushStream();
 }
 template <int outputs>
 matrix::RowKernel ChooseMatrixKernelImpl(const matrix::Config& config, const matrix::Coefficients& m) {

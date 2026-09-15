@@ -10,6 +10,7 @@
 #include <array>
 #include <cmath>
 #include <cstdint>
+#include <cstring>
 #include <limits>
 #include <vector>
 namespace {
@@ -279,6 +280,49 @@ TEST(MatrixRowsValidation, FloatSharedAndDistinctOutputAlignment) {
                   EXPECT_EQ(actual[c].values, expected[c].values);
               }
             }
+}
+TEST(MatrixRowsValidation, LargeFloatBandsSupportAliasingAndNegativeStrides) {
+  constexpr int width = 1024, height = 1026;
+  struct alignas(64) Storage {
+    std::array<float, size_t(width) * height> values;
+  };
+  std::array<std::unique_ptr<Storage>, 3> input, expected, actual;
+  for (int c = 0; c < 3; ++c) {
+    input[c] = std::make_unique<Storage>();
+    expected[c] = std::make_unique<Storage>();
+    actual[c] = std::make_unique<Storage>();
+    for (size_t x = 0; x < input[c]->values.size(); ++x)
+      input[c]->values[x] = float((x * 37 + c * 101) % 383) / 128.f - 1.f;
+  }
+  for (auto direction : {Direction::RgbToYuv, Direction::YuvToRgb})
+    for (bool preserve : {false, true})
+      for (bool alias : {false, true})
+        for (bool negative : {false, true}) {
+          const Config config{.2126, .0722, 32, 15, false, false, direction, preserve};
+          const auto m = BuildCoefficients(config);
+          const size_t start = negative ? size_t(width) * (height - 1) : 0;
+          const ptrdiff_t stride = (negative ? -width : width) * ptrdiff_t(sizeof(float));
+          std::array<vc_const_plane, 3> source, reference_source;
+          std::array<vc_plane, 3> destination, reference;
+          for (int c = 0; c < 3; ++c) {
+            expected[c]->values = input[c]->values;
+            reference[c] = {expected[c]->values.data() + start, stride};
+            destination[c] = {actual[c]->values.data() + start, stride};
+            source[c] = {(alias ? actual[c] : input[c])->values.data() + start, stride};
+            reference_source[c] = {(alias ? expected[c] : input[c])->values.data() + start, stride};
+          }
+          const vc_rows rows{width, height, 1, height - 2};
+          ASSERT_EQ(ExecuteC(config, m, reference_source, reference, rows), VC_OK);
+          for (int64_t remaining = vc_matrix_supported_targets(); remaining; remaining &= remaining - 1) {
+            for (int c = 0; c < 3; ++c)
+              actual[c]->values = input[c]->values;
+            ASSERT_EQ(Execute(config, m, source, destination, rows, GetMatrixKernel(remaining & -remaining, config, m)),
+                      VC_OK);
+            // Also checks the two untouched boundary rows after return.
+            for (int c = 0; c < 3; ++c)
+              EXPECT_EQ(std::memcmp(actual[c]->values.data(), expected[c]->values.data(), sizeof(Storage)), 0);
+          }
+        }
 }
 TEST(MatrixPlanValidation, InvalidCreationAndNullPlans) {
   const vc_matrix_config base{.299, .114, 8, 15, 1, 0, VC_RGB_TO_YUV};

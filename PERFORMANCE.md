@@ -1425,3 +1425,21 @@ Current module timings for these full-filter profiles are compared with their sa
 | Y32-LanczosResize-15-V | native | 2.2223 | 2.3269 | 1.047 |
 | Y32-LanczosResize-15-HV | avx2 | 5.4205 | 6.6340 | 1.224 |
 | Y32-LanczosResize-15-HV | native | 4.9911 | 4.6749 | 0.937 |
+
+## Resampling plan construction
+
+Current AMD AVX3_ZEN4 construction costs, measured separately from the execution tables above. Each observation is the median of seven batches of 400 complete `vc_resample_create_for_target` / `vc_resample_destroy` pairs; the table is the median of three observations. CPU 12, clang-cl Release, height 540, U16, source/destination center 0.5. Image setup, pixel conversion and correctness checks are outside the window. Longer fixed batches are used here because short construction windows showed substantial variability. No allocation interposer is active during timing.
+
+The integer coefficient deduplication scratch key reserves its complete length and reuses capacity for duplicate blocks. Mathematical coefficients, packed output layout and execution kernels are unchanged; controlled AMD execution checks remain within 5%, so the existing execution rows remain valid. Phase measurements and allocation counts are diagnostic data in `docs/PMU-INTERNAL-2026-09-14/05-REPORT.md`. No saved upstream construction baseline is available; these absolute costs are not speedup claims.
+
+| Data | Filter / path | Source width | Destination width | Current construction + destruction ms |
+|---|---|---:|---:|---:|
+| U16 | Lanczos3 H, 3/5, crop start 0.375 / size source−3.25 | 960 | 576 | 0.1746 |
+| U16 | Lanczos3 H, 3/5, crop start 0.375 / size source−3.25 | 1920 | 1152 | 0.3293 |
+| U16 | Lanczos3 H, 3/5, crop start 0.375 / size source−3.25 | 3840 | 2304 | 0.6617 |
+| U16 | Spline36 H, 1.5x | 960 | 1440 | 0.1410 |
+| U16 | Spline36 H, 1.5x | 1920 | 2880 | 0.2581 |
+| U16 | Spline36 H, 1.5x | 3840 | 5760 | 0.5168 |
+| U16 | Spline36 H, 2/3 | 960 | 640 | 0.1005 |
+| U16 | Spline36 H, 2/3 | 1920 | 1280 | 0.1708 |
+| U16 | Spline36 H, 2/3 | 3840 | 2560 | 0.3376 |

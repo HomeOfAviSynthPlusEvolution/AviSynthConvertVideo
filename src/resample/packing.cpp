@@ -13,6 +13,7 @@ void CompactPairs(HorizontalPacking& packed) {
   decltype(packed.pair_indices) indices, weights;
   std::vector<size_t> starts(packed.blocks.size());
   std::map<std::string, size_t> unique;
+  std::string key;
   for (size_t i = 0; i < packed.blocks.size(); ++i) {
     const auto& block = packed.blocks[i];
     if (!block.window_size && !block.stride_two && !block.single_sliding)
@@ -21,9 +22,12 @@ void CompactPairs(HorizontalPacking& packed) {
     const size_t count = (size_t(block.taps) / 2 + block.taps % 2) * 2 * packed.lanes;
     // Both relative indices and every coefficient must match exactly. Absolute
     // source starts remain per block; no phase approximation or tap reordering.
-    std::string key(reinterpret_cast<const char*>(packed.pair_indices.data() + first), count * sizeof(int16_t));
+    key.clear();
+    key.reserve(2 * count * sizeof(int16_t));
+    key.append(reinterpret_cast<const char*>(packed.pair_indices.data() + first), count * sizeof(int16_t));
     key.append(reinterpret_cast<const char*>(packed.pair_weights.data() + first), count * sizeof(int16_t));
-    const auto entry = unique.emplace(std::move(key), indices.size());
+    // Duplicate keys are not moved, so their scratch allocation can be reused.
+    const auto entry = unique.try_emplace(std::move(key), indices.size());
     starts[i] = entry.first->second;
     if (entry.second) {
       indices.insert(indices.end(), packed.pair_indices.begin() + first, packed.pair_indices.begin() + first + count);

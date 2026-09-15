@@ -56,7 +56,8 @@ void MatrixInteger(const matrix::Config& config, const matrix::Coefficients& m,
       // Centered 8..16-bit samples and validated coefficients fit signed i32.
       // On x86 each even i32 lane is the low half of its i64 sample. MulEven
       // retains the full signed i64 product without an expensive i64 multiply.
-      const hn::Repartition<int32_t, decltype(d)> pairs;
+      // Use the tag type directly to avoid MSVC's decltype of a reference capture.
+      const hn::Repartition<int32_t, hn::ScalableTag<A>> pairs;
       return hn::MulEven(hn::BitCast(pairs, value), hn::Set(pairs, weight));
     } else
 #endif

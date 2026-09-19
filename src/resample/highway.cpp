@@ -472,12 +472,12 @@ void HorizontalLongInteger(D d, const resample::Coefficients& plan, const T* sou
       const hn::Rebind<T, decltype(d16)> ds;
       const size_t remaining = size_t(plan.sizes[x] - k);
       const auto raw = hn::LoadN(ds, src + k, remaining);
-      const auto values = [&]() HWY_ATTR {
-        if constexpr (sizeof(T) == 1)
-          return hn::PromoteTo(d16, raw);
-        else
-          return hn::BitCast(d16, hn::Xor(raw, hn::Set(ds, uint16_t(bias))));
-      }();
+      // Keep the type-dependent branch outside a lambda for MSVC v141.
+      hn::VFromD<decltype(d16)> values;
+      if constexpr (sizeof(T) == 1)
+        values = hn::PromoteTo(d16, raw);
+      else
+        values = hn::BitCast(d16, hn::Xor(raw, hn::Set(ds, uint16_t(bias))));
       sum = hn::Add(sum, hn::WidenMulPairwiseAdd(d, values, hn::LoadN(d16, weights + k, remaining)));
     }
     int total = hn::ReduceSum(d, sum);

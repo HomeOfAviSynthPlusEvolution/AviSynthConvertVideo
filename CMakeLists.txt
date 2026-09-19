@@ -26,6 +26,12 @@ add_library(VideoConvert STATIC
 add_library(AviSynth::ConvertVideo ALIAS VideoConvert)
 target_compile_features(VideoConvert PRIVATE cxx_std_17)
 target_link_libraries(VideoConvert PRIVATE hwy)
+if(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC" AND
+   CMAKE_CXX_COMPILER_ARCHITECTURE_ID MATCHES "^ARM64")
+  # Highway cache_control.h includes arm_acle.h, unavailable in native MSVC
+  # ARM64. Disable cache hints/streaming helpers, not the NEON computations.
+  target_compile_definitions(VideoConvert PRIVATE HWY_DISABLE_CACHE_CONTROL)
+endif()
 if(VC_SCALAR_ONLY)
   target_compile_definitions(VideoConvert PRIVATE HWY_COMPILE_ONLY_SCALAR)
 endif()

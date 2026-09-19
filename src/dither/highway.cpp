@@ -15,13 +15,16 @@ namespace hn = hwy::HWY_NAMESPACE;
 #if HWY_TARGET != HWY_SCALAR && HWY_TARGET != HWY_EMU128
 // Ordinary ordered reduction never needs signed or floating lanes. Saturating
 // the addition at 65535 is exact after the quantized-code ceiling is applied.
-template <class S, class D, bool low = false, bool remap = false>
-void Ordered(const vc_ordered_plan& p, vc_const_plane source, vc_plane destination, vc_rows rows) {
+// Keep type-dependent branches in a function template: MSVC v141 checks
+// discarded branches inside the former lambda against the wrong source type.
+template <class S, bool low, bool remap>
+HWY_INLINE hn::VFromD<hn::CappedTag<uint16_t, 32>> OrderedQuantize(
+    const vc_ordered_plan& p, const S* src, int y, size_t at) {
   using D16 = hn::CappedTag<uint16_t, 32>;
   using V16 = hn::VFromD<D16>;
   const D16 d;
   const hn::Rebind<S, decltype(d)> ds;
-  const size_t n = hn::Lanes(d), width = size_t(rows.width);
+  const size_t n = hn::Lanes(d);
   const auto cap = hn::Set(d, uint16_t(p.quantized_max));
   const hn::Rebind<int16_t, decltype(d)> di;
   const auto center = hn::Set(d, uint16_t(1 << (p.shift - 1)));
@@ -35,40 +38,43 @@ void Ordered(const vc_ordered_plan& p, vc_const_plane source, vc_plane destinati
   const auto range_factor = hn::Set(df32, p.range.factor);
   const auto destination_offset = hn::Set(df32, p.range.destination_offset + .5f);
   const int backshift = p.config.depth.destination_bits - p.config.quantization_bits;
+  V16 value;
+  if constexpr (remap) {
+    auto map = [&](size_t index) HWY_ATTR {
+      const auto input = hn::PromoteTo(di32, hn::LoadU(half_source, src + index));
+      const auto scaled = hn::Mul(hn::Sub(hn::ConvertTo(df32, input), source_offset), range_factor);
+      return hn::Min(hn::Max(hn::ConvertInRangeTo(di32, hn::Add(scaled, destination_offset)), hn::Zero(di32)),
+                     source_max);
+    };
+    value = hn::OrderedDemote2To(d, map(at), map(at + n / 2));
+  } else if constexpr (sizeof(S) == 1)
+    value = hn::PromoteTo(d, hn::LoadU(ds, src + at));
+  else
+    value = hn::LoadU(d, src + at);
+  const auto corr = hn::LoadU(d, p.thresholds16.data() + (y & 15) * 64 + (at & 15));
+  auto sum = hn::SaturatedAdd(value, corr);
+  if constexpr (low)
+    // After the final zero clamp, subtracting the half-step in unsigned
+    // lanes equals truncating the old signed half-integer correction.
+    sum = hn::SaturatedSub(sum, center);
+  const auto q = hn::Min(hn::ShiftRightSame(sum, p.shift), cap);
+  if constexpr (low) {
+    const auto signed_q = hn::BitCast(di, q);
+    return hn::BitCast(d, hn::Add(hn::Mul(signed_q, scale_integer), hn::MulFixedPoint15(signed_q, scale_fraction)));
+  } else
+    return hn::ShiftLeftSame(q, backshift);
+}
+
+template <class S, class D, bool low = false, bool remap = false>
+void Ordered(const vc_ordered_plan& p, vc_const_plane source, vc_plane destination, vc_rows rows) {
+  const hn::CappedTag<uint16_t, 32> d;
+  const size_t n = hn::Lanes(d), width = size_t(rows.width);
   for (int y = rows.first_row; y < rows.first_row + rows.row_count; ++y) {
     const auto* src = Row<S>(source, y);
     auto* dst = Row<D>(destination, y);
     size_t x = 0;
-    // MSVC v141 misses implicit captures used only in if constexpr branches.
-    // Keep vector captures by reference: SVE vectors cannot be closure members.
-    auto quantize = [&p, &src, &d, &ds, &n, &di32, &half_source, &df32, &source_offset, &range_factor,
-                     &destination_offset, &source_max, &center, &di, &scale_integer, &scale_fraction,
-                     &backshift, &cap, &y](size_t at) HWY_ATTR {
-      V16 value;
-      if constexpr (remap) {
-        auto map = [&](size_t index) HWY_ATTR {
-          const auto input = hn::PromoteTo(di32, hn::LoadU(half_source, src + index));
-          const auto scaled = hn::Mul(hn::Sub(hn::ConvertTo(df32, input), source_offset), range_factor);
-          return hn::Min(hn::Max(hn::ConvertInRangeTo(di32, hn::Add(scaled, destination_offset)), hn::Zero(di32)),
-                         source_max);
-        };
-        value = hn::OrderedDemote2To(d, map(at), map(at + n / 2));
-      } else if constexpr (sizeof(S) == 1)
-        value = hn::PromoteTo(d, hn::LoadU(ds, src + at));
-      else
-        value = hn::LoadU(d, src + at);
-      const auto corr = hn::LoadU(d, p.thresholds16.data() + (y & 15) * 64 + (at & 15));
-      auto sum = hn::SaturatedAdd(value, corr);
-      if constexpr (low)
-        // After the final zero clamp, subtracting the half-step in unsigned
-        // lanes equals truncating the old signed half-integer correction.
-        sum = hn::SaturatedSub(sum, center);
-      const auto q = hn::Min(hn::ShiftRightSame(sum, p.shift), cap);
-      if constexpr (low) {
-        const auto signed_q = hn::BitCast(di, q);
-        return hn::BitCast(d, hn::Add(hn::Mul(signed_q, scale_integer), hn::MulFixedPoint15(signed_q, scale_fraction)));
-      } else
-        return hn::ShiftLeftSame(q, backshift);
+    auto quantize = [&](size_t at) HWY_ATTR {
+      return OrderedQuantize<S, low, remap>(p, src, y, at);
     };
     if constexpr (sizeof(D) == 1) {
       const hn::Repartition<uint8_t, decltype(d)> d8;

@@ -50,3 +50,11 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
     set_source_files_properties(src/dither/floyd.cpp src/dither/highway.cpp src/dither/ordered.cpp src/depth/highway.cpp src/depth/execute.cpp src/resample/execute.cpp src/resample/highway.cpp src/matrix/coefficients.cpp src/matrix/execute.cpp src/matrix/highway.cpp PROPERTIES COMPILE_OPTIONS -ffp-contract=off)
   endif()
 endif()
+
+# Work around a GCC compiler bug: GCC 14.2 on AArch64 ICEs during loop
+# unswitching in the SVE2 PackedHorizontalSum kernel (wide-int.h: sign_mask).
+# Disabling this pass avoids the ICE without changing the kernel algorithm.
+string(TOLOWER "${CMAKE_SYSTEM_PROCESSOR}" vc_system_processor)
+if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" AND vc_system_processor MATCHES "^(aarch64|arm64)$")
+  set_property(SOURCE src/resample/highway.cpp APPEND PROPERTY COMPILE_OPTIONS -fno-unswitch-loops)
+endif()

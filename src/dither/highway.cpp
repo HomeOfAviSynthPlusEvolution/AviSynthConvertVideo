@@ -39,7 +39,11 @@ void Ordered(const vc_ordered_plan& p, vc_const_plane source, vc_plane destinati
     const auto* src = Row<S>(source, y);
     auto* dst = Row<D>(destination, y);
     size_t x = 0;
-    auto quantize = [&](size_t at) HWY_ATTR {
+    // MSVC v141 misses implicit captures used only in if constexpr branches.
+    // Keep vector captures by reference: SVE vectors cannot be closure members.
+    auto quantize = [&p, &src, &d, &ds, &n, &di32, &half_source, &df32, &source_offset, &range_factor,
+                     &destination_offset, &source_max, &center, &di, &scale_integer, &scale_fraction,
+                     &backshift, &cap, &y](size_t at) HWY_ATTR {
       V16 value;
       if constexpr (remap) {
         auto map = [&](size_t index) HWY_ATTR {
